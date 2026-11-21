@@ -2468,6 +2468,34 @@ describe('prepare invariants', () => {
     }
   })
 
+  test('the Blink profile fits a line within one layout unit of the width truncated to units, at the layout scale', async () => {
+    const { setLayoutScale } = await import('./layout.ts')
+    const { getFitLimit } = await import('./measurement.ts')
+    const profile = getEngineProfile()
+    try {
+      // 1/64 px at scale 1: 100.01 truncates to 100, and 1/64 more fits.
+      expect(getFitLimit(100.01, profile)).toBe(100 + 1 / 64)
+      expect(getFitLimit(100, profile)).toBe(100 + 1 / 64)
+      // At scale 2 a unit is 1/128 px.
+      setLayoutScale(2)
+      expect(getFitLimit(100.01, profile)).toBe(100 + 2 / 128)
+      expect(getFitLimit(100.005, profile)).toBe(100 + 1 / 128)
+      setLayoutScale(1.25)
+      expect(getFitLimit(100.01, profile)).toBe((Math.floor(100.01 * 80) + 1) / 80)
+      // A line follows it: 'aaaa' fits where its width is within a unit of the truncated width.
+      const prepared = prepare('aaaa bbbb', FONT)
+      const aaaa = measureWidth('aaaa', FONT)
+      setLayoutScale(1)
+      expect(layout(prepared, (Math.ceil(aaaa * 64) - 1) / 64, 20).lineCount).toBe(2)
+      // One more unit short and 'aaaa' no longer fits, so it breaks inside the word.
+      expect(layout(prepared, (Math.ceil(aaaa * 64) - 2) / 64, 20).lineCount).toBeGreaterThan(2)
+      expect(() => setLayoutScale(0)).toThrow(RangeError)
+      expect(() => setLayoutScale(Number.NaN)).toThrow(RangeError)
+    } finally {
+      setLayoutScale()
+    }
+  })
+
   test('the library has no regex lookbehind, which a JavaScriptCore without it refuses to load', async () => {
     // JavaScriptCore checks every regex literal when it parses a module, so where it can't
     // parse a lookbehind, one stops the whole library from loading, whichever engine's path
@@ -2715,6 +2743,7 @@ describe('prepare invariants', () => {
       ['lineBreakScan', 'blink', 'webkit', 'gecko'],
       ['graphemeTable', 'chromium/char', 'apple/char', 'gecko/char'],
       ['lineFitEpsilon', 0.005, 1 / 64, 0.005],
+      ['fitsInLayoutUnits', true, false, false],
       ['cutWordFit', 'reshaped-lines', 'segment-prefixes', 'segment-prefixes'],
       ['prefixFitMinWidth', 80, 0, 80],
       ['cutWordKeepsLigatures', false, false, true],
@@ -3823,11 +3852,14 @@ describe('rich-inline invariants', () => {
     })
   })
 
-  test('rich line counts do not go up where an item fits within the fit epsilon', () => {
+  test('rich line counts do not go up where an item fits within the fit allowance', () => {
     // Where the walk over the second item takes `on the` only within the fit
-    // epsilon, wrapping before that whole item took one more line than 0.1px
-    // narrower, where the walk takes only `on`.
-    const epsilon = getEngineProfile().lineFitEpsilon
+    // allowance, wrapping before that whole item took one more line than 0.1px
+    // narrower, where the walk takes only `on`. The Blink profile fits content up to
+    // one layout unit, 1/64 px, past the width truncated to units: the narrowest such
+    // width is a unit under the content's width rounded up to units.
+    expect(getEngineProfile().fitsInLayoutUnits).toBe(true)
+    const within = (width: number): number => (Math.ceil(width * 64) - 1) / 64
     const lineTexts = (prepared: ReturnType<typeof prepareRichInline>, maxWidth: number): string[] => {
       const streamed: NonNullable<ReturnType<typeof layoutNextRichInlineLineRange>>[] = []
       let range = layoutNextRichInlineLineRange(prepared, maxWidth)
@@ -3850,7 +3882,7 @@ describe('rich-inline invariants', () => {
       { text: 'Is that ', font: FONT },
       { text: 'on the roadmap?', font: '700 16px Test Sans' },
     ])
-    const wider = measureWidth('Is that on the', FONT) - epsilon / 2
+    const wider = within(measureWidth('Is that on the', FONT))
     expect(lineTexts(words, wider - 0.1)).toEqual(['Is that on', 'the roadmap?'])
     expect(lineTexts(words, wider)).toEqual(['Is that on the', 'roadmap?'])
     // An atomic item that overflows by less than the epsilon stays on the line too.
@@ -3858,7 +3890,7 @@ describe('rich-inline invariants', () => {
       { text: 'Tag ', font: FONT },
       { text: '@maya', font: FONT, break: 'never', extraWidth: 18 },
     ])
-    expect(lineTexts(chip, measureWidth('Tag @maya', FONT) + 18 - epsilon / 2)).toEqual(['Tag @maya'])
+    expect(lineTexts(chip, within(measureWidth('Tag @maya', FONT) + 18))).toEqual(['Tag @maya'])
   })
 
   test('the Chromium profile and the Gecko scan break rich items only where their joined text breaks', () => {

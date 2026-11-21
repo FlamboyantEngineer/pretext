@@ -57,3 +57,16 @@ offline invariants and comparison (`bun harness equal main --offline`) and measu
 
 Upstream `main` at 6ed1edd (1.0.0 and its Unreleased changes), released as a built package so installing it runs no
 build.
+
+### 1.0.0-fe.2
+
+Line breaking in Chromium matches Chrome more closely, and the engine inputs can be fixed by the app:
+
+- `setEngine(engine)` gives a named engine's whole profile, for an app that must break lines the same way on every
+  machine or in a worker (#3). The readme's "Fonts in a worker" recipe registers the served fonts there.
+- Kerning with spaces: a word's kerning against a following space stays on the word, unless `accurateLineEnds` (an
+  option and a rich-inline item field) asks for Chrome's placement under justified or centred text and on decorated
+  items. Same-font rich-inline items kern across their edges as Chrome shapes them as one run (#4).
+- Fit arithmetic: a line fits within one layout unit of the width truncated to units, as in Chrome, and
+  `setLayoutScale(scale)` gives the device pixel ratio those units count in. Chrome's rounding of each item's piece of
+  a line is not ported yet (#5).
