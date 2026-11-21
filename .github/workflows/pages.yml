@@ -17,6 +17,8 @@ concurrency:
 
 jobs:
   build:
+    # The demo site is upstream's; forks don't publish it (FORK.md).
+    if: github.repository == 'chenglou/pretext'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
