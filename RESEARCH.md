@@ -6484,3 +6484,10 @@ decisions for the maintainer.
   Not ported: Blink rounds each item's piece of a line up to a unit (`SnappedWidth`), which the walkers would have to
   track per item at every fit test; with alternating bold words that leaves thresholds up to 0.078px off (5 units).
   Reopens with a walker that keeps a line's position per item.
+- **2026-11-21 (fork): the Blink profile rounds each rich item's piece of a line up to a unit.** The complex walker
+  rounds the line's width up to a layout unit where it goes on past a text item (`pieceStarts`), and materialization
+  gives that rounding to the item's fragment; the piece a line ends in needs none, since a width fits the whole-unit
+  limit exactly where its rounding does. A rich paragraph of several text items then takes the complex walker in the
+  Chromium profile. In 12px Arial, `Yours waffle few `, bold `café`, ` few Wavy `, bold `weather` and ` re-entry
+  rainfall` are 301.0137px by Canvas and 301.0625px on Chrome 154's line, so Chrome wraps `rainfall` in a 301px box and
+  now the profile does too.
