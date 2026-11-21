@@ -302,6 +302,9 @@ beforeAll(async () => {
 beforeEach(() => {
   // Retargeting the locale also clears the shared caches.
   setLocale(undefined)
+  // The fake canvas's widths aren't Blink's, so its rich lines add them as they are, but where a
+  // test turns the rounding of each item's piece on (roundsItemPieces).
+  getEngineProfile().roundsItemPieces = false
 })
 
 describe('shared public contracts', () => {
@@ -2768,6 +2771,7 @@ describe('prepare invariants', () => {
       ['graphemeTable', 'chromium/char', 'apple/char', 'gecko/char'],
       ['lineFitEpsilon', 0.005, 1 / 64, 0.005],
       ['fitsInLayoutUnits', true, false, false],
+      ['roundsItemPieces', true, false, false],
       ['cutWordFit', 'reshaped-lines', 'segment-prefixes', 'segment-prefixes'],
       ['prefixFitMinWidth', 80, 0, 80],
       ['cutWordKeepsLigatures', false, false, true],
@@ -4771,6 +4775,47 @@ describe('rich-inline invariants', () => {
     }
   })
 
+  test('a rich line rounds each text item\'s piece up to the layout unit, in the Chromium profile', async () => {
+    const { setLayoutScale } = await import('./layout.ts')
+    const BOLD = '700 16px Test Sans'
+    // `a ` is 14.88px, 952.32 units of 1/64px, and `b` 9.6px, 614.4 units: the items add up to
+    // 3471.36 units by Canvas and to 3 × 953 + 614.4 = 3473.4 with each piece rounded up.
+    const items: RichInlineItem[] = [{ text: 'a ', font: FONT }, { text: 'a ', font: BOLD }, { text: 'a ', font: FONT }, { text: 'b', font: BOLD }]
+    const lines = (width: number) => {
+      const prepared = prepareRichInline(items)
+      const out: Array<{ text: string; width: number }> = []
+      walkRichInlineLineRanges(prepared, width, range => {
+        out.push({ text: materializeRichInlineLineRange(prepared, range).fragments.map(f => f.text).join('|'), width: range.width })
+      })
+      expect(measureRichInlineStats(prepared, width).lineCount).toBe(out.length)
+      const first = layoutNextRichInlineLineRange(prepared, width)
+      expect(first?.width).toBe(out[0]!.width)
+      return out
+    }
+    const profile = getEngineProfile()
+    const previous = { fitsInLayoutUnits: profile.fitsInLayoutUnits, roundsItemPieces: profile.roundsItemPieces }
+    try {
+      profile.fitsInLayoutUnits = true
+      profile.roundsItemPieces = true
+      // The line fits 3474 units at a width of 3473: Chrome keeps `b` there and wraps it at 3472,
+      // where the Canvas sum fits.
+      expect(lines(3473 / 64)).toEqual([{ text: 'a|a|a|b', width: 3473.4 / 64 }])
+      expect(lines(3472 / 64).map(line => line.text)).toEqual(['a|a|a', 'b'])
+      // At twice the scale a unit is 1/128px: 3 × 1905 + 1228.8 = 6943.8 units.
+      setLayoutScale(2)
+      expect(lines(6943 / 128).map(line => line.text)).toEqual(['a|a|a|b'])
+      expect(lines(6942 / 128).map(line => line.text)).toEqual(['a|a|a', 'b'])
+      setLayoutScale(1)
+      // Without the rounding, the Canvas sum fits down to 3471 units.
+      profile.roundsItemPieces = false
+      expect(lines(3471 / 64).map(line => line.text)).toEqual(['a|a|a|b'])
+      expect(lines(3470 / 64).map(line => line.text)).toEqual(['a|a|a', 'b'])
+    } finally {
+      setLayoutScale(1)
+      Object.assign(profile, previous)
+    }
+  })
+
   test('a line that ends inside a padded item fits without the end edge the caller splits off, in the Chromium profile', () => {
     const some = measureWidth('Some', FONT) + measureWidth(' ', FONT)
     const by = measureWidth('by', FONT)
@@ -5232,7 +5277,8 @@ describe('rich-inline invariants', () => {
     const previous = { ...profile }
     try {
       for (let e = 0; e < engines.length; e++) {
-        Object.assign(profile, engines[e]!)
+        // A stand-in is a text item, whose piece Blink rounds up, where the box is as wide as given.
+        Object.assign(profile, engines[e]!, { roundsItemPieces: false })
         clearCache()
         for (const options of [{}, { whiteSpace: 'pre-wrap' }, { wordBreak: 'keep-all' }] as const) {
           for (const items of rows) {
@@ -7012,6 +7058,13 @@ test('the Chromium profile takes the kerning between a word and the spaces besid
       richOf([{ text: 'AA', font: '16px Test', accurateLineEnds: true }, { text: ' TT', font: '16px Test' }], undefined, 19.5),
       richOf([{ text: 'AA ', font: '16px Test' }, { text: 'TT', font: '16px Test' }], { accurateLineEnds: true }, 19.5),
       richOf([{ text: 'AA', font: '16px Test' }, { text: ' ', font: '16px Test' }, { text: 'TT', font: '16px Test' }], { accurateLineEnds: true }),
+      // Under pre-wrap, a preserved space that starts an item after text kerns with the word after
+      // it, as inside one item; one that starts the paragraph or follows a line feed is an item of
+      // its own.
+      richOf([{ text: 'AA', font: '16px Test' }, { text: ' TT', font: '16px Test' }], { whiteSpace: 'pre-wrap' }),
+      richOf([{ text: 'AA', font: '16px Test2' }, { text: ' TT', font: '16px Test' }], { whiteSpace: 'pre-wrap' }),
+      richOf([{ text: ' TT', font: '16px Test' }], { whiteSpace: 'pre-wrap' }),
+      richOf([{ text: 'AA\\n', font: '16px Test2' }, { text: ' TT', font: '16px Test' }], { whiteSpace: 'pre-wrap' }),
     ]
     // What a prepare asks Canvas with a U+2028 in it, the font's probe as its length.
     const asks = (text, font) => {
@@ -7132,6 +7185,7 @@ test('the Chromium profile takes the kerning between a word and the spaces besid
     [1, 37], [1, 37], [1, 37], [1, 37],
     [1, 38], [1, 39.5], [1, 40], [1, 38], [1, 52],
     [2, 19], [3, 16], [3, 16], [4, 16], [2, 19], [2, 19], [1, 37],
+    [1, 37], [1, 38], [1, 20], [2, 20],
   ])
   // The font is asked once whether it kerns the space: U+2028 between the printable ASCII
   // characters, 189 units, as the context stands and under fontKerning 'none', then U+2028

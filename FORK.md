@@ -82,3 +82,10 @@ Line breaking in Chromium matches Chrome more closely, and the engine inputs can
 `extraWidthEnd`, a rich-inline item field, gives the end side of the item's `extraWidth`. Chrome fits a line that ends
 inside a padded `box-decoration-break: clone` span without the span's cloned end edge, so the Chromium profile now does
 too; a line the span ends on still fits both edges (#7).
+
+### 1.0.0-fe.5
+
+- F3 ported: in Chromium, a rich line rounds each text item's piece up to the layout unit before the next item, as
+  Chrome adds them (`roundsItemPieces`). Line and fragment widths are the rounded ones.
+- Under pre-wrap, a preserved space that starts a rich item after other text keeps its kerning with the word after it,
+  as Chrome shapes it (#8).
