@@ -70,3 +70,9 @@ Line breaking in Chromium matches Chrome more closely, and the engine inputs can
 - Fit arithmetic: a line fits within one layout unit of the width truncated to units, as in Chrome, and
   `setLayoutScale(scale)` gives the device pixel ratio those units count in. Chrome's rounding of each item's piece of
   a line is not ported yet (#5).
+
+### 1.0.0-fe.3
+
+`setMeasureContext(create)` lets the app make the Canvas contexts Pretext measures through, for example under
+`textRendering = 'geometricPrecision'`, without which Chrome's Linux headless shell measures hinted whole-pixel widths
+(#6).

@@ -2442,6 +2442,30 @@ describe('prepare invariants', () => {
     }
   })
 
+  test('setMeasureContext() measures through the app\'s contexts, geometricPrecision kept on the whole-run one, until it is called without one', async () => {
+    const { setMeasureContext } = await import('./layout.ts')
+    const before = layout(prepare('Wave kana \u30ab\u30bf', FONT), 60, 20).lineCount
+    const made: Array<CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D> = []
+    try {
+      setMeasureContext(() => {
+        const context = new OffscreenCanvas(1, 1).getContext('2d')!
+        context.textRendering = 'geometricPrecision'
+        made.push(context)
+        return context
+      })
+      expect(layout(prepare('Wave kana \u30ab\u30bf', FONT), 60, 20).lineCount).toBe(before)
+      expect(made.length).toBeGreaterThan(0)
+      expect(made.every(context => context.textRendering === 'geometricPrecision')).toBe(true)
+      // The contexts and what was measured through them go with the next change.
+      const count = made.length
+      setMeasureContext()
+      prepare('Wave', FONT)
+      expect(made.length).toBe(count)
+    } finally {
+      setMeasureContext()
+    }
+  })
+
   test('setEngine() gives the named engine\'s whole profile whatever the user agent, until it is called without one', async () => {
     const { setEngine } = await import('./layout.ts')
     const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'navigator')
