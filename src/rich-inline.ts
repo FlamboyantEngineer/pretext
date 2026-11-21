@@ -30,7 +30,7 @@ import {
   type ParagraphSegmentData,
   type PreparedLineData,
 } from './line-break.js'
-import { getEngineProfile, getFontMeasurement, getPreparationLanguage, getSpaceWidth, readLetterSpacing, zeros, type EngineProfile } from './measurement.js'
+import { getEngineProfile, getFitLimit, getFontMeasurement, getPreparationLanguage, getSpaceWidth, readLetterSpacing, zeros, type EngineProfile } from './measurement.js'
 import { measureAnalysis, mixedDirectionRe, type ParagraphLists } from './prepare.js'
 
 // Helper for rich-text inline flow under `white-space: normal` or `pre-wrap`: one paragraph's text
@@ -870,7 +870,7 @@ function narrowsLine(data: PreparedSegments, itemSegments: number[]): boolean {
 // width and walked under it, where the walkers can end a line that the whole fit takes
 // (findWholeLine; RESEARCH.md, Decisions Log, 2026-10-09, rich inline's width).
 function fitsWhole(flow: InternalPreparedRichInline, maxWidth: number): boolean {
-  return flow.wholeWidth !== null && flow.wholeWidth <= maxWidth + getEngineProfile().lineFitEpsilon
+  return flow.wholeWidth !== null && flow.wholeWidth <= getFitLimit(maxWidth, getEngineProfile())
 }
 
 // `count` zeros, where a paragraph's list of numbers starts: a copy of one list of zeros, which

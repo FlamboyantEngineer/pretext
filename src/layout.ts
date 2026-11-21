@@ -23,6 +23,7 @@ import {
   getPreparationLanguage,
   readLetterSpacing,
   setEngineOverride,
+  setLayoutScaleValue,
   setLocaleLanguage,
   type LayoutEngine,
 } from './measurement.js'
@@ -387,4 +388,15 @@ export type { LayoutEngine }
 export function setEngine(engine?: LayoutEngine): void {
   setEngineOverride(engine)
   clearCache()
+}
+
+// Sets how many device pixels a CSS pixel of the laid-out text takes: the page's
+// devicePixelRatio, which browser zoom changes, times any CSS `zoom` on the text's element or
+// its ancestors. 1 by default. Chrome fits a line in units of 1/64 of a device pixel, so its
+// lines end a little differently at another scale; the Blink profile follows it. Preparation
+// doesn't read it, so prepared texts stay valid. A worker can't read devicePixelRatio: pass
+// the page's.
+export function setLayoutScale(scale = 1): void {
+  if (!(scale > 0) || !Number.isFinite(scale)) throw new RangeError(`setLayoutScale() takes a finite scale above 0, not ${scale}`)
+  setLayoutScaleValue(scale)
 }

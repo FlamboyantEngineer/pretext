@@ -16,7 +16,7 @@ import {
   ZERO_WIDTH_GLUE,
 } from './analysis.js'
 import type { LayoutCursor, LineStats } from './layout.js'
-import { getEngineProfile } from './measurement.js'
+import { getEngineProfile, getFitLimit } from './measurement.js'
 
 const BREAK_AFTER_KINDS = 1 << SPACE | 1 << ZERO_WIDTH_BREAK | 1 << SOFT_HYPHEN | 1 << PRESERVED_SPACE | 1 << TAB
 
@@ -329,7 +329,7 @@ export function countPreparedLines(prepared: PreparedLineData, maxWidth: number)
     return prepared.simpleLineCountFastPath ? countSteppedLines(prepared, maxWidth) : walkPreparedLinesRaw(prepared, maxWidth)
   }
   const { widths, segmentFlags, breakableFitAdvances, breakableLineStartExtras, lineStartExtras, lineEndTrims } = prepared
-  const fitLimit = Math.max(0, maxWidth) + getEngineProfile().lineFitEpsilon
+  const fitLimit = getFitLimit(Math.max(0, maxWidth), getEngineProfile())
   const segmentCount = widths.length
   let count = 0
   // Every line starts at 0 and adds its content's widths. Firefox runs this loop
@@ -515,7 +515,7 @@ function walkPreparedComplexLines(
   const hardBreakItemRetreat = engineProfile.hardBreakItemRetreat
   // A negative width lays out as 0, as in the simple stepper.
   const availableWidth = Math.max(0, maxWidth)
-  const fitLimit = availableWidth + engineProfile.lineFitEpsilon
+  const fitLimit = getFitLimit(availableWidth, engineProfile)
   // Preparation records soft-hyphen contexts only where the text has a soft hyphen.
   const retreatsFromUnfitHyphen = prepared.discretionaryHyphenContexts !== null
   // Blink's retry leaves room for the hyphen at every earlier opportunity. Gecko and
@@ -1097,7 +1097,7 @@ function stepPreparedSimpleLineGeometry(
   const { widths, segmentFlags, breakableFitAdvances, lineStartExtras, lineEndTrims, overflowLineEndTrims } = prepared
   const engineProfile = getEngineProfile()
   // A negative width lays out as 0, as in the complex walker.
-  const fitLimit = Math.max(0, maxWidth) + engineProfile.lineFitEpsilon
+  const fitLimit = getFitLimit(Math.max(0, maxWidth), engineProfile)
   const start = cursor.segmentIndex
 
   // The first segment of the line, or the rest of one a line ended inside. One that

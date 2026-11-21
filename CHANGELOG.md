@@ -5,6 +5,7 @@
 ### Added
 
 - `accurateLineEnds`, an option of `prepare()`, `prepareWithSegments()` and `prepareRichInline()` and a field of a rich-inline item, says that Chrome needs a line's exact end there: under a `text-align` other than start, or for an item with a text decoration or a background.
+- `setLayoutScale(scale?)` gives the device pixels per CSS pixel the text lays out at. In Chrome a line now fits as Chrome fits it, against the width truncated to 1/64 of a device pixel plus one such unit, where it took a 0.005 px allowance: a line whose content sits within a unit of its width now breaks where Chrome breaks it, at any pixel ratio or zoom it is told.
 - `setEngine(engine?)` lays text out by one engine's rules, `'blink'`, `'webkit'` or `'gecko'`, whatever the user agent names, and `setEngine()` goes back to the user agent's. The README shows how to register fonts in a worker.
 
 ### Changed

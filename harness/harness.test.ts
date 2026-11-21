@@ -1225,12 +1225,13 @@ describe('the library through the adapter', () => {
     }
   }
 
-  test('a width 1/64 px short at a fit threshold fails: text that exactly fits a bubble would wrap', () => {
+  test('a width 1/32 px short at a fit threshold fails: text that exactly fits a bubble would wrap', () => {
     const text = 'aaaa bbbb'
     const fit = library.measureNaturalWidth(library.prepareWithSegments(text, '16px Harness Test'))
     const oneLine = layOut(text, [0]).recording
     expect(score(oneLine, adapter.predict(paragraph(text, fit))).status).toBe('pass')
-    expect(score(oneLine, adapter.predict(paragraph(text, fit - 1 / 64))).status).toBe('count')
+    // Two layout units: Chrome fits a line within one (fitsInLayoutUnits).
+    expect(score(oneLine, adapter.predict(paragraph(text, fit - 1 / 32))).status).toBe('count')
   })
 
   test('white space the library leaves out inside a text is in the line of the unit before it: a line the browser ends at a collapsed space would fail with the browser\'s own breaks', () => {

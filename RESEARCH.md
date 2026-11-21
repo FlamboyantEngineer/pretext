@@ -6475,3 +6475,12 @@ decisions for the maintainer.
   12px Arial (Liberation Sans): of 6,000 probe paragraphs (plain and with single-word links, start-aligned and
   justified) main got 65 wrong and this change 0 with the option set as the style says; of 4,000 with multi-word links
   main 106 and this 0. Reopens if a font or style shows Chrome shaping an item end otherwise.
+- **2026-11-21 (fork): the Blink profile fits in layout units at a given scale.** Blink compares a line's position with
+  `AvailableWidthToFit()`, the available width as a LayoutUnit (truncated to 1/64 of a device pixel) plus one unit
+  (`AvailableWidth().AddEpsilon()`), so the profile's fit limit is `(floor(width * 64 * scale) + 1) / (64 * scale)` in
+  place of `width + 0.005`, with the scale from `setLayoutScale()`, since Pretext reads no `devicePixelRatio` and a
+  worker can't. Chromium 153, 12px Arial: the narrowest width keeping a word on the first line equals Chrome's in 150 of
+  150 sampled sentences at ratios 1, 1.25 and 2 (forced device scale factor), where the allowance was off in 444 of 450.
+  Not ported: Blink rounds each item's piece of a line up to a unit (`SnappedWidth`), which the walkers would have to
+  track per item at every fit test; with alternating bold words that leaves thresholds up to 0.078px off (5 units).
+  Reopens with a walker that keeps a line's position per item.

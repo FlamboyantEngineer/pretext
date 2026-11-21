@@ -52,9 +52,14 @@ export type EngineProfile = {
   // clusters Chrome's rules give, over its text run, which leaves out bidi controls.
   graphemeTable: GraphemeTable
   // What a line may overflow its width by and still fit: WebKit's own 1/64 px, which availableWidth()
-  // adds (InlineLineBuilder.cpp:1172-1183). Blink and Gecko fit exactly in their own units, so their
-  // 0.005 px is a named gap (ENGINE_FOLLOWUPS.md, Fitting arithmetic).
+  // adds (InlineLineBuilder.cpp:1172-1183). Gecko fits exactly in its own units, so its 0.005 px is a
+  // named gap (ENGINE_FOLLOWUPS.md, Fitting arithmetic). Blink fits in layout units (fitsInLayoutUnits).
   lineFitEpsilon: number
+  // Blink takes the available width as a LayoutUnit, 1/64 of a device pixel, truncated, and fits a line
+  // whose content is at most one unit more (LineBreaker's AvailableWidthToFit, AvailableWidth()
+  // .AddEpsilon()). A unit is 1/64 px divided by the layout scale (setLayoutScale), since Chrome lays
+  // out in device pixels.
+  fitsInLayoutUnits: boolean
   // How a segment is fit where a line narrower than it cuts it between letters, from Canvas
   // questions about the word (getSegmentFit). WebKit measures the word's grapheme prefixes
   // (TextUtil::breakWord), and Gecko adds the advances of the word shaped whole
@@ -990,6 +995,21 @@ export function getEngineProfile(): EngineProfile {
   return cachedEngineProfile ??= buildEngineProfile()
 }
 
+// Device pixels per CSS pixel where the text lays out, setLayoutScale()'s: the page's
+// devicePixelRatio times any CSS zoom around the text. Only the Blink profile reads it.
+let layoutScale = 1
+
+export function setLayoutScaleValue(scale: number): void {
+  layoutScale = scale
+}
+
+// The most a line's content may measure on a line of maxWidth and still fit it.
+export function getFitLimit(maxWidth: number, profile: EngineProfile): number {
+  if (!profile.fitsInLayoutUnits) return maxWidth + profile.lineFitEpsilon
+  const units = 64 * layoutScale
+  return (Math.floor(maxWidth * units) + 1) / units
+}
+
 // The engine setEngine() named, which the profile follows in place of the user agent's, or
 // undefined.
 let engineOverride: LayoutEngine | undefined
@@ -1014,6 +1034,7 @@ function buildEngineProfile(): EngineProfile {
     lineBreakScan: engine,
     graphemeTable: engine === 'webkit' ? 'apple/char' : engine === 'gecko' ? 'gecko/char' : 'chromium/char',
     lineFitEpsilon: engine === 'webkit' ? 1 / 64 : 0.005,
+    fitsInLayoutUnits: engine === 'blink',
     cutWordFit: engine === 'blink' ? 'reshaped-lines' : 'segment-prefixes',
     prefixFitMinWidth: engine === 'webkit' ? 0 : 80,
     cutWordKeepsLigatures: engine === 'gecko',
