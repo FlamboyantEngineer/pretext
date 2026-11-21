@@ -1,8 +1,8 @@
 import { alignToSource, analyzeText, isCollapsibleSpaceCode, DROPPED, HARD_BREAK, KIND_BITS, OBJECT, PRESERVED_SPACE, RETURNABLE, SOFT_HYPHEN, SPACE, SPACED, TAB, TEXT, UNBROKEN, ZERO_WIDTH_BREAK, ZERO_WIDTH_GLUE, } from './analysis.js';
 import { buildLineTextFromRange, buildRangeText, getGraphemeEnds } from './line-text.js';
 import { getItemTabAdvance, normalizeMaxWidth, normalizePreparedLineStart, stepPreparedLineGeometryFromStart, walkPreparedLinesRaw, } from './line-break.js';
-import { getEngineProfile, getFontMeasurement, getPreparationLanguage, getSpaceWidth, readLetterSpacing, zeros } from './measurement.js';
-import { measureAnalysis } from './prepare.js';
+import { getEngineProfile, getFitLimit, getFontMeasurement, getPreparationLanguage, getSpaceWidth, readLetterSpacing, zeros } from './measurement.js';
+import { measureAnalysis, mixedDirectionRe } from './prepare.js';
 const PRESERVED_WHITE_SPACE = 1 << PRESERVED_SPACE | 1 << TAB;
 const RICH_INLINE_START_CURSOR = {
     itemIndex: 0,
@@ -12,9 +12,19 @@ const RICH_INLINE_START_CURSOR = {
 function getInternalPreparedRichInline(prepared) {
     return prepared;
 }
+// Whether two text items of a paragraph shape as one run where they meet: one font and letter
+// spacing, neither atomic, and no extraWidth, which stands for padding, a border or a margin
+// between them (shapesAcrossItems).
+function shapesWith(items, atomic, a, b) {
+    const first = items[a];
+    const second = items[b];
+    return a !== b && first.text !== undefined && second.text !== undefined && !atomic[a] && !atomic[b] &&
+        (first.extraWidth ?? 0) === 0 && (second.extraWidth ?? 0) === 0 && first.font === second.font && (first.letterSpacing ?? 0) === (second.letterSpacing ?? 0);
+}
 export function prepareRichInline(items, options) {
     const whiteSpace = options?.whiteSpace ?? 'normal';
     const wordBreak = options?.wordBreak ?? 'normal';
+    const accurateLineEnds = options?.accurateLineEnds === true;
     const preserve = whiteSpace === 'pre-wrap';
     // One language read for the paragraph's analysis and every item's measurement.
     const profile = getEngineProfile();
@@ -41,7 +51,7 @@ export function prepareRichInline(items, options) {
     const only = onlyIndex < 0 ? undefined : items[onlyIndex];
     if (only !== undefined && only.text !== undefined && only.break !== 'never' && (only.extraWidth ?? 0) === 0) {
         const analysis = analyzeText(only.text, profile, whiteSpace, wordBreak, language);
-        const data = measureAnalysis(analysis, 0, analysis.flags.length, only.font, true, readLetterSpacing(only.letterSpacing, profile), profile, language, true, null);
+        const data = measureAnalysis(analysis, 0, analysis.flags.length, only.font, true, readLetterSpacing(only.letterSpacing, profile), profile, language, true, null, accurateLineEnds || only.accurateLineEnds === true);
         const itemSegments = [];
         for (let index = 0; index <= items.length; index++)
             itemSegments.push(index <= onlyIndex ? 0 : data.segmentFlags.length);
@@ -122,7 +132,13 @@ export function prepareRichInline(items, options) {
     const widths = [];
     const flags = new Uint8Array(count + padded);
     const breakableFitAdvances = [];
-    const lists = { widths, segmentFlags: flags, breakableFitAdvances };
+    const lists = { widths, segmentFlags: flags, breakableFitAdvances, kernsBefore: false, kernsAfter: false };
+    // Whether neighbouring text items may shape as one run: Blink shapes the text of one font as one
+    // run across inline boxes (RunSegmenter over the paragraph's text) unless a box's padding,
+    // border or margin breaks it (ShouldBreakShapingBeforeBox, inline_node.cc), and preparation
+    // can't see which spaces share a level with a word once the paragraph mixes directions, as for
+    // a text (measureAnalysis).
+    const shapesAcrossItems = profile.kernsAcrossCanvasWords && !mixedDirectionRe.test(source);
     const segments = [];
     const sourceStarts = [];
     const sourceEnds = [];
@@ -161,6 +177,8 @@ export function prepareRichInline(items, options) {
     let marksReturnable = false;
     // Where the item at hand starts among the paragraph's segments.
     let itemStart = 0;
+    // The item of the segments before the item at hand, -1 before the first.
+    let lastIndex = -1;
     // Whether the paragraph holds an object of width 0.
     let hasEmptyObject = false;
     for (let from = 0; from < count;) {
@@ -178,6 +196,8 @@ export function prepareRichInline(items, options) {
         const item = items[index];
         const previousItemStart = itemStart;
         itemStart = widths.length;
+        const previousIndex = lastIndex;
+        lastIndex = index;
         if (item.text === undefined || atomic[index]) {
             // One object: a box's width, or the width of the item's text on a line of its own, laid out
             // in normal white space, as a chip's box with `white-space: nowrap` collapses its own, plus
@@ -193,7 +213,7 @@ export function prepareRichInline(items, options) {
             }
             else {
                 const ownAnalysis = analyzeText(item.text, profile, 'normal', wordBreak, language);
-                const own = measureAnalysis(ownAnalysis, 0, ownAnalysis.flags.length, item.font, false, readLetterSpacing(item.letterSpacing, profile), profile, language, false, null);
+                const own = measureAnalysis(ownAnalysis, 0, ownAnalysis.flags.length, item.font, false, readLetterSpacing(item.letterSpacing, profile), profile, language, false, null, accurateLineEnds || item.accurateLineEnds === true);
                 const start = { segmentIndex: 0, graphemeIndex: 0 };
                 if (normalizePreparedLineStart(own, start))
                     width = stepPreparedLineGeometryFromStart(own, start, Number.POSITIVE_INFINITY);
@@ -322,7 +342,13 @@ export function prepareRichInline(items, options) {
         // The item's segments, measured in its font onto the end of the paragraph's lists; `sub` holds
         // what else measurement gives them, from the item's first segment.
         const itemAt = widths.length;
-        const sub = measureAnalysis(analysis, from, to, item.font, false, letterSpacing, profile, language, true, lists);
+        let nextIndex = index;
+        if (to < count)
+            while (nextIndex + 1 < starts.length && starts[nextIndex + 1] <= offsets[analysis.starts[to]])
+                nextIndex++;
+        lists.kernsBefore = shapesAcrossItems && previousIndex >= 0 && shapesWith(items, atomic, previousIndex, index);
+        lists.kernsAfter = shapesAcrossItems && to < count && shapesWith(items, atomic, index, nextIndex);
+        const sub = measureAnalysis(analysis, from, to, item.font, false, letterSpacing, profile, language, true, lists, accurateLineEnds || item.accurateLineEnds === true);
         simple &&= sub.simpleLineCountFastPath;
         if (readsItemFonts) {
             // The gap before the hyphen is the letter spacing after the grapheme before it.
@@ -719,7 +745,7 @@ function narrowsLine(data, itemSegments) {
 // width and walked under it, where the walkers can end a line that the whole fit takes
 // (findWholeLine; RESEARCH.md, Decisions Log, 2026-10-09, rich inline's width).
 function fitsWhole(flow, maxWidth) {
-    return flow.wholeWidth !== null && flow.wholeWidth <= maxWidth + getEngineProfile().lineFitEpsilon;
+    return flow.wholeWidth !== null && flow.wholeWidth <= getFitLimit(maxWidth, getEngineProfile());
 }
 // `count` zeros, where a paragraph's list of numbers starts: a copy of one list of zeros, which
 // grows to the longest asked for, up to 1024; a longer list is pushed. A copy is one allocation,

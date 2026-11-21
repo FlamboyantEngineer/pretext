@@ -20,6 +20,7 @@ export type EngineProfile = {
     lineBreakScan: 'blink' | 'webkit' | 'gecko';
     graphemeTable: GraphemeTable;
     lineFitEpsilon: number;
+    fitsInLayoutUnits: boolean;
     cutWordFit: 'segment-prefixes' | 'reshaped-lines';
     prefixFitMinWidth: number;
     cutWordKeepsLigatures: boolean;
@@ -104,6 +105,9 @@ export declare function getTextWidth(text: string, measurement: FontMeasurement,
 export type LayoutEngine = 'blink' | 'webkit' | 'gecko';
 export declare function getLayoutEngine(userAgent: string): LayoutEngine | null;
 export declare function getEngineProfile(): EngineProfile;
+export declare function setLayoutScaleValue(scale: number): void;
+export declare function getFitLimit(maxWidth: number, profile: EngineProfile): number;
+export declare function setEngineOverride(engine: LayoutEngine | undefined): void;
 export declare function parseFontSize(font: string): number;
 export declare function textMayContainEmoji(text: string): boolean;
 export declare function getEmojiCorrection(font: string, measurement: FontMeasurement): number;

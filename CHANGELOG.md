@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### Added
+
+- `accurateLineEnds`, an option of `prepare()`, `prepareWithSegments()` and `prepareRichInline()` and a field of a rich-inline item, says that Chrome needs a line's exact end there: under a `text-align` other than start, or for an item with a text decoration or a background.
+- `setLayoutScale(scale?)` gives the device pixels per CSS pixel the text lays out at. In Chrome a line now fits as Chrome fits it, against the width truncated to 1/64 of a device pixel plus one such unit, where it took a 0.005 px allowance: a line whose content sits within a unit of its width now breaks where Chrome breaks it, at any pixel ratio or zoom it is told.
+- `setEngine(engine?)` lays text out by one engine's rules, `'blink'`, `'webkit'` or `'gecko'`, whatever the user agent names, and `setEngine()` goes back to the user agent's. The README shows how to register fonts in a worker.
+
+### Changed
+
+- In Chrome, a line that ends at a word that kerns with the space after it (`NASA`, `FAA`, `Ray`, in Arial) now keeps that kerning, as Chrome lays out start-aligned text without a decoration or background, so such a word stays on the line where it used to wrap 0.2 to 0.7 px early at 12 px. Pass `accurateLineEnds` for other text.
+- In Chrome, a space between two rich-inline items of one font and letter spacing and no `extraWidth` takes its kerning with the letters on both sides, as Chrome shapes the two as one run: a line that holds a link or an underlined word beside a space no longer needs 0.2 px more room than Chrome gives it.
+
 ### Fixed
 
 - A zero-width space now gets the line the browser gives it. Where the content before it doesn't fit its line, it starts the next line, and holds that line alone where nothing follows it or the next word doesn't fit beside it: after a letter wider than the line, after a space that ends the line and, in Chrome and Safari, after an image or a `break: 'never'` item wider than the line, where Firefox keeps it on that item's line. So an editor's caret anchor after an image wider than its box is a line of its own in Chrome and Safari, as on the page, and `lineCount` and `height` count that line. A line that ended with such a zero-width space now ends before it, and the next line's range and text start with it. This also gives back the line that 1.0.0 took from a zero-width space in a rich-inline item of its own (#525).

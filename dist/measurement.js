@@ -552,17 +552,41 @@ export function getLayoutEngine(userAgent) {
 export function getEngineProfile() {
     return cachedEngineProfile ??= buildEngineProfile();
 }
+// Device pixels per CSS pixel where the text lays out, setLayoutScale()'s: the page's
+// devicePixelRatio times any CSS zoom around the text. Only the Blink profile reads it.
+let layoutScale = 1;
+export function setLayoutScaleValue(scale) {
+    layoutScale = scale;
+}
+// The most a line's content may measure on a line of maxWidth and still fit it.
+export function getFitLimit(maxWidth, profile) {
+    if (!profile.fitsInLayoutUnits)
+        return maxWidth + profile.lineFitEpsilon;
+    const units = 64 * layoutScale;
+    return (Math.floor(maxWidth * units) + 1) / units;
+}
+// The engine setEngine() named, which the profile follows in place of the user agent's, or
+// undefined.
+let engineOverride;
+// A new engine changes the profile and what the measurement state took from it (its generic
+// families and letter-spaced shaping), so both are built again.
+export function setEngineOverride(engine) {
+    engineOverride = engine;
+    cachedEngineProfile = null;
+    measureState = null;
+}
 function buildEngineProfile() {
     // A navigator can lack a userAgent, as React Native's does, where lib.dom's type says it is a
     // string: such a runtime names no engine, like one with no navigator.
     const ua = typeof navigator === 'undefined' ? '' : navigator.userAgent ?? '';
     // Engines Pretext doesn't recognize take Blink's profile (RESEARCH.md, Decisions Log,
     // 2026-09-26).
-    const engine = getLayoutEngine(ua) ?? 'blink';
+    const engine = engineOverride ?? getLayoutEngine(ua) ?? 'blink';
     return {
         lineBreakScan: engine,
         graphemeTable: engine === 'webkit' ? 'apple/char' : engine === 'gecko' ? 'gecko/char' : 'chromium/char',
         lineFitEpsilon: engine === 'webkit' ? 1 / 64 : 0.005,
+        fitsInLayoutUnits: engine === 'blink',
         cutWordFit: engine === 'blink' ? 'reshaped-lines' : 'segment-prefixes',
         prefixFitMinWidth: engine === 'webkit' ? 0 : 80,
         cutWordKeepsLigatures: engine === 'gecko',
@@ -585,7 +609,8 @@ function buildEngineProfile() {
         hanKerning: engine === 'blink',
         hangsIdeographicSpace: engine !== 'webkit',
         laysOutUnderDefaultLocale: engine === 'blink',
-        namesGenericFamiliesByLanguage: engine === 'webkit' && !/^(?:Linux|Win32|Haiku|$)/.test(navigator.platform),
+        // A WebKit profile that setEngine() gave may run with no navigator, which names no families.
+        namesGenericFamiliesByLanguage: engine === 'webkit' && typeof navigator !== 'undefined' && !/^(?:Linux|Win32|Haiku|$)/.test(navigator.platform),
         hardBreakItemRetreat: engine === 'blink' ? 'item' : engine === 'webkit' ? 'fit' : 'last-grapheme',
         paddedOpeningFit: engine === 'blink' ? 'start' : engine === 'webkit' ? 'placed' : 'both',
         emptyAtomicAlwaysFits: engine === 'gecko',

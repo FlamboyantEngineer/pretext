@@ -22,7 +22,10 @@ import {
   getEngineProfile,
   getPreparationLanguage,
   readLetterSpacing,
+  setEngineOverride,
+  setLayoutScaleValue,
   setLocaleLanguage,
+  type LayoutEngine,
 } from './measurement.js'
 import { measureAnalysis } from './prepare.js'
 import {
@@ -101,6 +104,9 @@ export type PrepareOptions = {
   whiteSpace?: WhiteSpaceMode
   wordBreak?: WordBreakMode
   letterSpacing?: number
+  // Chrome only: where the text's line ends must be exact, as under a CSS text-align other than
+  // start (center, end, justify) or for text with a decoration or a background
+  accurateLineEnds?: boolean
 }
 
 // --- Public API ---
@@ -117,7 +123,7 @@ function prepareInternal(
   // One language read: break rules and measurement both follow it.
   const language = getPreparationLanguage(engineProfile)
   const analysis = analyzeText(text, engineProfile, options?.whiteSpace, wordBreak, language)
-  return measureAnalysis(analysis, 0, analysis.flags.length, font, includeSegments, letterSpacing, engineProfile, language, true, null)
+  return measureAnalysis(analysis, 0, analysis.flags.length, font, includeSegments, letterSpacing, engineProfile, language, true, null, options?.accurateLineEnds === true)
 }
 
 // Prepare text for layout. Segments the text, measures each segment via canvas,
@@ -369,4 +375,28 @@ export function clearCache(): void {
 export function setLocale(locale?: string): void {
   setLocaleLanguage(locale)
   clearCache()
+}
+
+export type { LayoutEngine }
+
+// Sets the layout engine whose rules later preparation and layout follow, in place of the
+// one the user agent names: 'blink' (Chrome, Edge), 'webkit' (Safari) or 'gecko' (Firefox).
+// An app that lays text out for one engine whatever runs it, such as a document paged by
+// Chrome's rules in every browser or in a server-side test, names it. Without an engine the
+// user agent decides again. Canvas widths still come from the browser that runs it. Prepared
+// handles don't keep the engine, so prepare again after a change.
+export function setEngine(engine?: LayoutEngine): void {
+  setEngineOverride(engine)
+  clearCache()
+}
+
+// Sets how many device pixels a CSS pixel of the laid-out text takes: the page's
+// devicePixelRatio, which browser zoom changes, times any CSS `zoom` on the text's element or
+// its ancestors. 1 by default. Chrome fits a line in units of 1/64 of a device pixel, so its
+// lines end a little differently at another scale; the Blink profile follows it. Preparation
+// doesn't read it, so prepared texts stay valid. A worker can't read devicePixelRatio: pass
+// the page's.
+export function setLayoutScale(scale = 1): void {
+  if (!(scale > 0) || !Number.isFinite(scale)) throw new RangeError(`setLayoutScale() takes a finite scale above 0, not ${scale}`)
+  setLayoutScaleValue(scale)
 }

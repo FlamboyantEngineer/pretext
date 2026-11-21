@@ -3,6 +3,7 @@ import { type EngineProfile } from './measurement.js';
 import type { PreparedText } from './layout.js';
 import type { PreparedLineBreakData } from './line-break.js';
 import type { PreparedSegments } from './line-text.js';
+export declare const mixedDirectionRe: RegExp;
 export declare const OTHER_SCRIPT = 1;
 export declare const CYRILLIC_SCRIPT = 2;
 export declare const GREEK_SCRIPT = 4;
@@ -19,6 +20,8 @@ export type ParagraphLists = {
     widths: number[];
     segmentFlags: Uint8Array;
     breakableFitAdvances: (number[] | null)[];
+    kernsBefore: boolean;
+    kernsAfter: boolean;
 };
-export declare function measureAnalysis(analysis: TextAnalysis, from: number, to: number, font: string, includeSegments: boolean, letterSpacing: number, engineProfile: EngineProfile, language: string | null, overflowBreaks: boolean, paragraph: ParagraphLists | null): (PreparedText & PreparedLineBreakData) | (PreparedText & PreparedSegments);
+export declare function measureAnalysis(analysis: TextAnalysis, from: number, to: number, font: string, includeSegments: boolean, letterSpacing: number, engineProfile: EngineProfile, language: string | null, overflowBreaks: boolean, paragraph: ParagraphLists | null, accurateLineEnds: boolean): (PreparedText & PreparedLineBreakData) | (PreparedText & PreparedSegments);
 //# sourceMappingURL=prepare.d.ts.map

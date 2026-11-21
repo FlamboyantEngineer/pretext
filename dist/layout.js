@@ -9,7 +9,7 @@
 // Based on Sebastian Markbage's text-layout research (github.com/chenglou/text-layout).
 import { clearWordSegmenter } from './line-breaks.js';
 import { analyzeText, KIND_BITS, SEGMENT_KINDS, } from './analysis.js';
-import { clearMeasurementCaches, getEngineProfile, getPreparationLanguage, readLetterSpacing, setLocaleLanguage, } from './measurement.js';
+import { clearMeasurementCaches, getEngineProfile, getPreparationLanguage, readLetterSpacing, setEngineOverride, setLayoutScaleValue, setLocaleLanguage, } from './measurement.js';
 import { measureAnalysis } from './prepare.js';
 import { countPreparedLines, normalizeMaxWidth, normalizePreparedLineStart, stepPreparedLineGeometryFromStart, walkPreparedLinesRaw, } from './line-break.js';
 import { buildLineTextFromRange } from './line-text.js';
@@ -21,7 +21,7 @@ function prepareInternal(text, font, includeSegments, options) {
     // One language read: break rules and measurement both follow it.
     const language = getPreparationLanguage(engineProfile);
     const analysis = analyzeText(text, engineProfile, options?.whiteSpace, wordBreak, language);
-    return measureAnalysis(analysis, 0, analysis.flags.length, font, includeSegments, letterSpacing, engineProfile, language, true, null);
+    return measureAnalysis(analysis, 0, analysis.flags.length, font, includeSegments, letterSpacing, engineProfile, language, true, null, options?.accurateLineEnds === true);
 }
 // Prepare text for layout. Segments the text, measures each segment via canvas,
 // and stores the widths for fast relayout at any width. Call once per text block
@@ -179,4 +179,25 @@ export function clearCache() {
 export function setLocale(locale) {
     setLocaleLanguage(locale);
     clearCache();
+}
+// Sets the layout engine whose rules later preparation and layout follow, in place of the
+// one the user agent names: 'blink' (Chrome, Edge), 'webkit' (Safari) or 'gecko' (Firefox).
+// An app that lays text out for one engine whatever runs it, such as a document paged by
+// Chrome's rules in every browser or in a server-side test, names it. Without an engine the
+// user agent decides again. Canvas widths still come from the browser that runs it. Prepared
+// handles don't keep the engine, so prepare again after a change.
+export function setEngine(engine) {
+    setEngineOverride(engine);
+    clearCache();
+}
+// Sets how many device pixels a CSS pixel of the laid-out text takes: the page's
+// devicePixelRatio, which browser zoom changes, times any CSS `zoom` on the text's element or
+// its ancestors. 1 by default. Chrome fits a line in units of 1/64 of a device pixel, so its
+// lines end a little differently at another scale; the Blink profile follows it. Preparation
+// doesn't read it, so prepared texts stay valid. A worker can't read devicePixelRatio: pass
+// the page's.
+export function setLayoutScale(scale = 1) {
+    if (!(scale > 0) || !Number.isFinite(scale))
+        throw new RangeError(`setLayoutScale() takes a finite scale above 0, not ${scale}`);
+    setLayoutScaleValue(scale);
 }

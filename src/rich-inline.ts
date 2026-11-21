@@ -30,8 +30,8 @@ import {
   type ParagraphSegmentData,
   type PreparedLineData,
 } from './line-break.js'
-import { getEngineProfile, getFontMeasurement, getPreparationLanguage, getSpaceWidth, readLetterSpacing, zeros, type EngineProfile } from './measurement.js'
-import { measureAnalysis, type ParagraphLists } from './prepare.js'
+import { getEngineProfile, getFitLimit, getFontMeasurement, getPreparationLanguage, getSpaceWidth, readLetterSpacing, zeros, type EngineProfile } from './measurement.js'
+import { measureAnalysis, mixedDirectionRe, type ParagraphLists } from './prepare.js'
 
 // Helper for rich-text inline flow under `white-space: normal` or `pre-wrap`: one paragraph's text
 // broken across its items, as a browser lays out the text of an inline formatting context across
@@ -60,6 +60,7 @@ export type RichInlineItem = {
   letterSpacing?: number // Extra horizontal spacing between graphemes, in CSS px
   break?: 'normal' | 'never' // `never` keeps the item atomic, like a pill or mention chip
   extraWidth?: number // Caller-owned horizontal chrome, e.g. padding + border width
+  accurateLineEnds?: boolean // Chrome only: the item has a text decoration or a background, as a link or a highlight, so a line that ends in it ends exactly
   width?: never // A RichInlineBox's
 }
 
@@ -76,6 +77,7 @@ export type RichInlineBox = {
 export type RichInlineOptions = {
   whiteSpace?: WhiteSpaceMode // `pre-wrap`: CSS `white-space: pre-wrap`, as prepare() takes it
   wordBreak?: WordBreakMode // `keep-all`: CSS `word-break: keep-all`, as prepare() takes it
+  accurateLineEnds?: boolean // Chrome only: CSS `text-align` other than start (center, end, justify), so every line ends exactly
 }
 
 export type PreparedRichInline = {
@@ -183,9 +185,20 @@ function getInternalPreparedRichInline(prepared: PreparedRichInline): InternalPr
   return prepared as InternalPreparedRichInline
 }
 
+// Whether two text items of a paragraph shape as one run where they meet: one font and letter
+// spacing, neither atomic, and no extraWidth, which stands for padding, a border or a margin
+// between them (shapesAcrossItems).
+function shapesWith(items: Array<RichInlineItem | RichInlineBox>, atomic: boolean[], a: number, b: number): boolean {
+  const first = items[a]!
+  const second = items[b]!
+  return a !== b && first.text !== undefined && second.text !== undefined && !atomic[a]! && !atomic[b]! &&
+    (first.extraWidth ?? 0) === 0 && (second.extraWidth ?? 0) === 0 && first.font === second.font && (first.letterSpacing ?? 0) === (second.letterSpacing ?? 0)
+}
+
 export function prepareRichInline(items: Array<RichInlineItem | RichInlineBox>, options?: RichInlineOptions): PreparedRichInline {
   const whiteSpace = options?.whiteSpace ?? 'normal'
   const wordBreak = options?.wordBreak ?? 'normal'
+  const accurateLineEnds = options?.accurateLineEnds === true
   const preserve = whiteSpace === 'pre-wrap'
   // One language read for the paragraph's analysis and every item's measurement.
   const profile = getEngineProfile()
@@ -212,7 +225,7 @@ export function prepareRichInline(items: Array<RichInlineItem | RichInlineBox>, 
   const only = onlyIndex < 0 ? undefined : items[onlyIndex]!
   if (only !== undefined && only.text !== undefined && only.break !== 'never' && (only.extraWidth ?? 0) === 0) {
     const analysis = analyzeText(only.text, profile, whiteSpace, wordBreak, language)
-    const data = measureAnalysis(analysis, 0, analysis.flags.length, only.font, true, readLetterSpacing(only.letterSpacing, profile), profile, language, true, null) as PreparedSegments
+    const data = measureAnalysis(analysis, 0, analysis.flags.length, only.font, true, readLetterSpacing(only.letterSpacing, profile), profile, language, true, null, accurateLineEnds || only.accurateLineEnds === true) as PreparedSegments
     const itemSegments: number[] = []
     for (let index = 0; index <= items.length; index++) itemSegments.push(index <= onlyIndex ? 0 : data.segmentFlags.length)
     return findWholeLine({
@@ -287,7 +300,13 @@ export function prepareRichInline(items: Array<RichInlineItem | RichInlineBox>, 
   const widths: number[] = []
   const flags = new Uint8Array(count + padded)
   const breakableFitAdvances: (number[] | null)[] = []
-  const lists: ParagraphLists = { widths, segmentFlags: flags, breakableFitAdvances }
+  const lists: ParagraphLists = { widths, segmentFlags: flags, breakableFitAdvances, kernsBefore: false, kernsAfter: false }
+  // Whether neighbouring text items may shape as one run: Blink shapes the text of one font as one
+  // run across inline boxes (RunSegmenter over the paragraph's text) unless a box's padding,
+  // border or margin breaks it (ShouldBreakShapingBeforeBox, inline_node.cc), and preparation
+  // can't see which spaces share a level with a word once the paragraph mixes directions, as for
+  // a text (measureAnalysis).
+  const shapesAcrossItems = profile.kernsAcrossCanvasWords && !mixedDirectionRe.test(source)
   const segments: string[] = []
   const sourceStarts: number[] = []
   const sourceEnds: number[] = []
@@ -326,6 +345,8 @@ export function prepareRichInline(items: Array<RichInlineItem | RichInlineBox>, 
   let marksReturnable = false
   // Where the item at hand starts among the paragraph's segments.
   let itemStart = 0
+  // The item of the segments before the item at hand, -1 before the first.
+  let lastIndex = -1
   // Whether the paragraph holds an object of width 0.
   let hasEmptyObject = false
 
@@ -341,6 +362,8 @@ export function prepareRichInline(items: Array<RichInlineItem | RichInlineBox>, 
     const item = items[index]!
     const previousItemStart = itemStart
     itemStart = widths.length
+    const previousIndex = lastIndex
+    lastIndex = index
 
     if (item.text === undefined || atomic[index]) {
       // One object: a box's width, or the width of the item's text on a line of its own, laid out
@@ -356,7 +379,7 @@ export function prepareRichInline(items: Array<RichInlineItem | RichInlineBox>, 
         width = item.width
       } else {
         const ownAnalysis = analyzeText(item.text, profile, 'normal', wordBreak, language)
-        const own = measureAnalysis(ownAnalysis, 0, ownAnalysis.flags.length, item.font, false, readLetterSpacing(item.letterSpacing, profile), profile, language, false, null)
+        const own = measureAnalysis(ownAnalysis, 0, ownAnalysis.flags.length, item.font, false, readLetterSpacing(item.letterSpacing, profile), profile, language, false, null, accurateLineEnds || item.accurateLineEnds === true)
         const start: LayoutCursor = { segmentIndex: 0, graphemeIndex: 0 }
         if (normalizePreparedLineStart(own, start)) width = stepPreparedLineGeometryFromStart(own, start, Number.POSITIVE_INFINITY)!
         width += item.extraWidth ?? 0
@@ -476,7 +499,11 @@ export function prepareRichInline(items: Array<RichInlineItem | RichInlineBox>, 
     // The item's segments, measured in its font onto the end of the paragraph's lists; `sub` holds
     // what else measurement gives them, from the item's first segment.
     const itemAt = widths.length
-    const sub = measureAnalysis(analysis, from, to, item.font, false, letterSpacing, profile, language, true, lists)
+    let nextIndex = index
+    if (to < count) while (nextIndex + 1 < starts.length && starts[nextIndex + 1]! <= offsets[analysis.starts[to]!]!) nextIndex++
+    lists.kernsBefore = shapesAcrossItems && previousIndex >= 0 && shapesWith(items, atomic, previousIndex, index)
+    lists.kernsAfter = shapesAcrossItems && to < count && shapesWith(items, atomic, index, nextIndex)
+    const sub = measureAnalysis(analysis, from, to, item.font, false, letterSpacing, profile, language, true, lists, accurateLineEnds || item.accurateLineEnds === true)
     simple &&= sub.simpleLineCountFastPath
     if (readsItemFonts) {
       // The gap before the hyphen is the letter spacing after the grapheme before it.
@@ -843,7 +870,7 @@ function narrowsLine(data: PreparedSegments, itemSegments: number[]): boolean {
 // width and walked under it, where the walkers can end a line that the whole fit takes
 // (findWholeLine; RESEARCH.md, Decisions Log, 2026-10-09, rich inline's width).
 function fitsWhole(flow: InternalPreparedRichInline, maxWidth: number): boolean {
-  return flow.wholeWidth !== null && flow.wholeWidth <= maxWidth + getEngineProfile().lineFitEpsilon
+  return flow.wholeWidth !== null && flow.wholeWidth <= getFitLimit(maxWidth, getEngineProfile())
 }
 
 // `count` zeros, where a paragraph's list of numbers starts: a copy of one list of zeros, which

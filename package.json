@@ -1,6 +1,6 @@
 {
   "name": "@chenglou/pretext",
-  "version": "1.0.0-fe.1",
+  "version": "1.0.0-fe.2",
   "description": "Fast, accurate & comprehensive text measurement & layout",
   "keywords": [
     "text-layout",
@@ -48,5 +48,5 @@
     "!src/layout.test.ts",
     "!src/test-data.ts"
   ],
-  "forkSource": "85b8a11538cb072d4e64910401539eadf004e120"
+  "forkSource": "7b352d6c9b747cd6df3388208a53fa8d5679b0a6"
 }

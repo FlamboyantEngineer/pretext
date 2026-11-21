@@ -7,6 +7,7 @@ export type RichInlineItem = {
     letterSpacing?: number;
     break?: 'normal' | 'never';
     extraWidth?: number;
+    accurateLineEnds?: boolean;
     width?: never;
 };
 export type RichInlineBox = {
@@ -16,6 +17,7 @@ export type RichInlineBox = {
 export type RichInlineOptions = {
     whiteSpace?: WhiteSpaceMode;
     wordBreak?: WordBreakMode;
+    accurateLineEnds?: boolean;
 };
 export type PreparedRichInline = {
     readonly [preparedRichInlineBrand]: true;

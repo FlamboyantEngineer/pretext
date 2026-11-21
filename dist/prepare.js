@@ -48,7 +48,7 @@ function needsComplexTextPath(text) {
 }
 // A character of the right-to-left blocks, whose letters have bidi class R or AL, as RLM
 // has, or an explicit bidi control.
-const mixedDirectionRe = /[\u0590-\u08FF\uFB1D-\uFDFF\uFE70-\uFEFF\u200F\u{10800}-\u{10FFF}\u{1E800}-\u{1EFFF}\u202A-\u202E\u2066-\u2069]/u;
+export const mixedDirectionRe = /[\u0590-\u08FF\uFB1D-\uFDFF\uFE70-\uFEFF\u200F\u{10800}-\u{10FFF}\u{1E800}-\u{1EFFF}\u202A-\u202E\u2066-\u2069]/u;
 function isSpaceKind(kind) {
     return kind === SPACE || kind === PRESERVED_SPACE;
 }
@@ -298,7 +298,9 @@ export function measureAnalysis(analysis, from, to, font, includeSegments, lette
 // which is only laid out whole, takes none.
 overflowBreaks, 
 // The paragraph's lists for a rich-inline item, null for a text.
-paragraph) {
+paragraph, 
+// Whether a line that ends in this text needs its last word's exact end (accurateLineEnds).
+accurateLineEnds) {
     const { normalized, texts, starts, flags } = analysis;
     // The measured text and where it starts in the analysis's: what is asked of the whole text
     // is asked of it, and places in it count from its start.
@@ -347,7 +349,11 @@ paragraph) {
     // (ShouldBreakShapingBeforeText, inline_node.cc:472-490), and which spaces share a word's
     // direction depends on the paragraph's, which preparation can't see, so text with a
     // right-to-left letter or an explicit bidi control takes none.
-    let fontSpaceKerning = engineProfile.kernsAcrossCanvasWords && own.includes(' ') ? getFontSpaceKerning(fontMeasurement) : null;
+    // A rich item that shapes with the item before or after it may kern with a space there, which
+    // its caller sets only in a paragraph that holds no right-to-left letter or bidi control.
+    const kernsBefore = paragraph !== null && paragraph.kernsBefore;
+    const kernsAfter = paragraph !== null && paragraph.kernsAfter;
+    let fontSpaceKerning = engineProfile.kernsAcrossCanvasWords && (hasSpace || kernsBefore || kernsAfter) ? getFontSpaceKerning(fontMeasurement) : null;
     if (fontSpaceKerning !== null && mixedDirectionRe.test(own))
         fontSpaceKerning = null;
     const scriptRuns = { read: 0, scripts: ANY_SCRIPT, openBrackets: [] };
@@ -398,29 +404,43 @@ paragraph) {
                 previousJoinableMetrics = textMetrics;
                 let followingSpaceKerning = followingSpaceTail === null || measuredWithSpace ? 0 : getTailKerning(text + followingSpaceTail, fontMeasurement, spaceWidth);
                 if (fontSpaceKerning !== null && textMetrics.spaceKerning !== noSpaceKerning) {
-                    const spaceBefore = mi > from && isSpaceKind(flags[mi - 1] & KIND_BITS);
-                    const spaceAfter = mi + 1 < to && isSpaceKind(flags[mi + 1] & KIND_BITS);
+                    // A space of the item before or after, where the two shape as one run (kernsBefore,
+                    // kernsAfter).
+                    const spaceBeforeIsOwn = mi > from;
+                    const spaceBefore = (spaceBeforeIsOwn || (kernsBefore && mi > 0)) && isSpaceKind(flags[mi - 1] & KIND_BITS);
+                    const spaceAfter = (mi + 1 < to || (kernsAfter && mi + 1 < flags.length)) && isSpaceKind(flags[mi + 1] & KIND_BITS);
                     if (spaceBefore || spaceAfter) {
                         const kerning = textMetrics.spaceKerning ?? getSpaceKerning(text, textMetrics, fontMeasurement, fontSpaceKerning);
                         if (spaceAfter) {
-                            // Premise: a kerning that tightens the word and the space after it goes on the
-                            // space, which hangs, so a line that ends there has the word without it, as in
-                            // Blink under a text-align other than start and for text whose element has a
-                            // decoration or a background (NeedsAccurateEndPosition, line_breaker.cc:255-268).
-                            // One that widens stays on the word, whose end Blink finds in the run shaped
-                            // whole. In other text a line's last word is wider here than there by the
-                            // kerning, never narrower (RESEARCH.md, Kerning At Line Edges).
-                            followingSpaceKerning = Math.max(kerning.after, 0);
-                            spaceShare = Math.min(kerning.after, 0);
+                            // Blink takes a line's end from the run shaped whole, so a line that ends at the
+                            // space has the word with its kerning with that space, unless the line needs an
+                            // accurate end position: under a text-align other than start, and for text whose
+                            // element has a decoration or a background, it shapes the end of a text item it
+                            // breaks again without the space, and a kerning that tightens the two goes on the
+                            // space, which hangs (NeedsAccurateEndPosition, line_breaker.cc:255-268; LineInfo's
+                            // ComputeNeedsAccurateEndPosition). An item that ends with the space, or the word
+                            // before another item's space, fits whole and isn't shaped again. One that widens
+                            // stays on the word either way. Where the line goes on, the word and the space are
+                            // as wide in both.
+                            if (accurateLineEnds && mi + 2 < to) {
+                                followingSpaceKerning = Math.max(kerning.after, 0);
+                                spaceShare = Math.min(kerning.after, 0);
+                            }
+                            else {
+                                followingSpaceKerning = kerning.after;
+                            }
                         }
                         // The space takes its kerning with this word, and takes it along where it hangs: a
                         // line that breaks between the two is shaped again without it
                         // (shaping_line_breaker.cc:307-324). Preserved spaces that start the text or follow
                         // a forced break are a Blink item of their own (inline_items_builder.cc:988-1034),
-                        // which kerns with nothing.
+                        // which kerns with nothing. Its script run is read from this text, or for a space of
+                        // the item before, from the paragraph's text before the word.
                         if (spaceBefore && kerning.before !== 0 &&
-                            !((flags[mi - 1] & KIND_BITS) === PRESERVED_SPACE && (mi === from + 1 || (flags[mi - 2] & KIND_BITS) === HARD_BREAK)) &&
-                            spaceSharesScriptRun(scriptRuns, own, starts[mi] - ownStart, starts[mi] - ownStart + text.length)) {
+                            !((flags[mi - 1] & KIND_BITS) === PRESERVED_SPACE && (mi === (spaceBeforeIsOwn ? from + 1 : 1) || (flags[mi - 2] & KIND_BITS) === HARD_BREAK)) &&
+                            (spaceBeforeIsOwn
+                                ? spaceSharesScriptRun(scriptRuns, own, starts[mi] - ownStart, starts[mi] - ownStart + text.length)
+                                : spaceSharesScriptRun({ read: starts[mi - 1], scripts: ANY_SCRIPT, openBrackets: [] }, normalized, starts[mi], starts[mi] + text.length))) {
                             widths[at - 1] = widths[at - 1] + kerning.before;
                         }
                     }
