@@ -4,7 +4,13 @@
 
 ### Added
 
+- `accurateLineEnds`, an option of `prepare()`, `prepareWithSegments()` and `prepareRichInline()` and a field of a rich-inline item, says that Chrome needs a line's exact end there: under a `text-align` other than start, or for an item with a text decoration or a background.
 - `setEngine(engine?)` lays text out by one engine's rules, `'blink'`, `'webkit'` or `'gecko'`, whatever the user agent names, and `setEngine()` goes back to the user agent's. The README shows how to register fonts in a worker.
+
+### Changed
+
+- In Chrome, a line that ends at a word that kerns with the space after it (`NASA`, `FAA`, `Ray`, in Arial) now keeps that kerning, as Chrome lays out start-aligned text without a decoration or background, so such a word stays on the line where it used to wrap 0.2 to 0.7 px early at 12 px. Pass `accurateLineEnds` for other text.
+- In Chrome, a space between two rich-inline items of one font and letter spacing and no `extraWidth` takes its kerning with the letters on both sides, as Chrome shapes the two as one run: a line that holds a link or an underlined word beside a space no longer needs 0.2 px more room than Chrome gives it.
 
 ### Fixed
 

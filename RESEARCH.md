@@ -1283,8 +1283,11 @@ vocabulary. The premises and their gaps:
   text has a text decoration or a background (`NeedsAccurateEndPosition`, `line_breaker.cc:255-268`). A line then fits
   where its last word fits both ways, with the kerning, at the break Blink finds in the run shaped whole, and without
   it, shaped again: Avenir Next's `f` moves 0.36px away from a space after it, and a line that ends in `of` needs that
-  room in every mode. Pretext reads no style, so the profile takes the second rule for every text: a kerning that
-  tightens a word and the space after it goes on the space, and one that widens them stays on the word. (A space's
+  room in every mode. Pretext reads no style, so the app says which rule holds (`accurateLineEnds`, since the fork's
+  2026-11-21 change, FORK.md): by default a kerning that tightens a word and the space after it stays on the word, and
+  with the option it goes on the space where the space has more of its item after it; one that widens them stays on the
+  word either way. Before the option the profile took the second rule for every text, as the rest of this entry
+  records. (A space's
   kerning with the word after it goes on the space under either rule, since a line that breaks between the two is shaped
   again without it, `shaping_line_breaker.cc:307-324`.) In start-aligned text with no decoration or background, a line's
   last word is then wider in the profile than in Chrome by the kerning, as it is on main, so a line can wrap a word that
@@ -6461,3 +6464,14 @@ decisions for the maintainer.
   What it leaves is under Line edges in ENGINE_FOLLOWUPS.md: Chrome's kerning across a ZWSP, a fit within a layout
   unit that now shows as a line, and a soft hyphen beside one. Reopens with real text that turns on one of those, or
   if a later bench shows the walkers' tests for one on `layout()`.
+- **2026-11-21 (fork): Chrome's line-end kerning follows an `accurateLineEnds` input, and a space between same-font
+  rich items kerns with both.** Blink shapes the end of a text item it breaks again without the space only where the line
+  needs an accurate end position (text-align other than start, a decoration or a background on the line's last item;
+  `NeedsAccurateEndPosition`, `line_breaker.cc:255-268`), and an item that fits whole keeps its shaping. Pretext can't
+  read style, so the app says it; the default is start-aligned, undecorated text, the common case. Blink shapes
+  neighbouring text items of one font as one run unless padding, a border or a margin breaks it
+  (`ShouldBreakShapingBeforeBox`), so the space at an item edge takes its kerning with the other item's letter where
+  both items share font and letter spacing, have no `extraWidth` and the paragraph doesn't mix directions. Chromium 153,
+  12px Arial (Liberation Sans): of 6,000 probe paragraphs (plain and with single-word links, start-aligned and
+  justified) main got 65 wrong and this change 0 with the option set as the style says; of 4,000 with multi-word links
+  main 106 and this 0. Reopens if a font or style shows Chrome shaping an item end otherwise.
