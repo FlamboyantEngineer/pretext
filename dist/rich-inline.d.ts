@@ -7,6 +7,7 @@ export type RichInlineItem = {
     letterSpacing?: number;
     break?: 'normal' | 'never';
     extraWidth?: number;
+    extraWidthEnd?: number;
     accurateLineEnds?: boolean;
     width?: never;
 };

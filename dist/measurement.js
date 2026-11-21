@@ -616,6 +616,7 @@ function buildEngineProfile() {
         hardBreakItemRetreat: engine === 'blink' ? 'item' : engine === 'webkit' ? 'fit' : 'last-grapheme',
         paddedOpeningFit: engine === 'blink' ? 'start' : engine === 'webkit' ? 'placed' : 'both',
         emptyAtomicAlwaysFits: engine === 'gecko',
+        fitsClonedEndEdge: engine !== 'blink',
         zeroWidthSpaceStaysAfterAtomic: engine === 'gecko',
         hangsSpacesPerTextFrame: engine === 'gecko',
         testsHyphenBeforeAtomic: engine !== 'webkit',

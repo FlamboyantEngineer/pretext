@@ -272,6 +272,18 @@ export function prepareRichInline(items, options) {
         // but after an object in Blink and Gecko, and before a zero-width space after an object or
         // white space, where the browsers break.
         const extraWidth = item.extraWidth ?? 0;
+        // The item's start and end edges where the caller splits its extraWidth, and else half each.
+        const endEdge = extraWidth > 0 ? Math.max(0, Math.min(item.extraWidthEnd ?? extraWidth / 2, extraWidth)) : 0;
+        // What a line that ends inside the item leaves out of its fit: Blink fits such a line without
+        // the item's cloned end edge, which only a test-only flag takes off the line's available width
+        // (BoxDecorationBreakCloneLineBreaking, line_breaker.cc:454-461), though it paints it there, and
+        // fits the end edge of a line the item ends on (HandleCloseTag, :4021-4045). In 12px Arial a span
+        // `by also` in 10px Courier New with 3px of padding on each side keeps `by` on a line of
+        // `Some words here ` and it from 112.39px in Chrome 154, 3px less than the line with both edges,
+        // and `also` from 145.39px, with both. A span `by also ` that ends with a space keeps `also` 3px
+        // narrower too, as the space ends the line inside the span. Only a caller that gives the end edge
+        // gets it (extraWidthEnd), as an extraWidth of a border or a margin may have none.
+        const unfitEndEdge = profile.fitsClonedEndEdge || item.extraWidthEnd === undefined ? 0 : endEdge;
         let first = to;
         if (extraWidth !== 0) {
             first = from;
@@ -295,7 +307,7 @@ export function prepareRichInline(items, options) {
                 // spaces after right-to-left text (ENGINE_FOLLOWUPS.md, Rich-inline item edges).
                 const afterTextSpaces = at - 1 > previousItemStart && (flags[at - 1] & KIND_BITS) === PRESERVED_SPACE && (1 << (flags[at - 2] & KIND_BITS) & (1 << TAB | 1 << HARD_BREAK)) === 0 &&
                     (openingEdges === null || openingEdges[at - 2] === 0);
-                const fit = getOpeningFit(analysis.flags, from, to, extraWidth, afterTextSpaces, profile);
+                const fit = getOpeningFit(analysis.flags, from, to, extraWidth, extraWidth - endEdge, afterTextSpaces, profile);
                 // In WebKit a break comes before white space that starts an item (whiteSpaceItemBreaks), and
                 // none before a hard break, after an object too (nextWrapOpportunity,
                 // InlineFormattingUtils.cpp:469-475).
@@ -458,6 +470,11 @@ export function prepareRichInline(items, options) {
                     (itemEndHalts ??= zeroList(flags.length))[at] = retryTrim;
                     simple = false;
                 }
+            }
+            if (unfitEndEdge !== 0 && i >= first && i < to - 1 && (1 << (flags[at] & KIND_BITS) & (1 << SPACE | PRESERVED_WHITE_SPACE | 1 << HARD_BREAK)) === 0) {
+                ;
+                (lineEndTrims ??= zeroList(flags.length))[at] = lineEndTrims[at] + unfitEndEdge;
+                simple = false;
             }
             if (sub.discretionaryHyphenContexts !== null)
                 (discretionaryHyphenContexts ??= zeroList(flags.length))[at] = sub.discretionaryHyphenContexts[s];
@@ -763,8 +780,8 @@ function zeroList(count) {
 // white space, hard break or zero-width space that starts it, and no more of it; a line that goes
 // on into the item fits all of it. Blink adds a span's start edge to the line when it opens
 // (HandleOpenTag, line_breaker.cc:3957-3976), and only a test-only flag narrows the line for its
-// cloned end edge (BoxDecorationBreakCloneLineBreaking, :454-461), so it fits half: the extraWidth
-// isn't split by side (ENGINE_FOLLOWUPS.md). The items a line takes after the break it returns to
+// cloned end edge (BoxDecorationBreakCloneLineBreaking, :454-461), so it fits the start edge: the
+// extraWidth less its extraWidthEnd, or half of it where the caller doesn't split it. The items a line takes after the break it returns to
 // stay on it where they are all trailable, white space with the tags of spans that open and close
 // among it (RewindOverflow, :4332-4424), so Blink fits no edge of a span of only white space. Nor
 // does it after preserved spaces that follow text in one item, which its return breaks before
@@ -778,7 +795,7 @@ function zeroList(count) {
 // space (nextWrapOpportunity, InlineFormattingUtils.cpp:470-475, 530-538), so it fits the end
 // edge too of an item of white space that ends there. Gecko fits a frame's whole width, its
 // cloned end edge too (CanPlaceFrame, nsLineLayout.cpp:1217-1270).
-function getOpeningFit(flags, from, to, extraWidth, afterTextSpaces, profile) {
+function getOpeningFit(flags, from, to, extraWidth, startEdge, afterTextSpaces, profile) {
     const fit = profile.paddedOpeningFit;
     const firstKind = flags[from] & KIND_BITS;
     const opensWithWhiteSpace = firstKind === PRESERVED_SPACE || (firstKind === TAB && profile.hangTabs);
@@ -787,10 +804,10 @@ function getOpeningFit(flags, from, to, extraWidth, afterTextSpaces, profile) {
     while (whiteSpaceEnd < to && ((flags[whiteSpaceEnd] & KIND_BITS) === PRESERVED_SPACE || (flags[whiteSpaceEnd] & KIND_BITS) === TAB))
         whiteSpaceEnd++;
     if (fit === 'start' && (opensWithWhiteSpace || opensWithBreak))
-        return afterTextSpaces || whiteSpaceEnd === to ? 0 : extraWidth / 2;
+        return afterTextSpaces || whiteSpaceEnd === to ? 0 : startEdge;
     if (fit === 'placed' && (opensWithWhiteSpace || opensWithBreak)) {
         const onlyOpening = whiteSpaceEnd === to || (whiteSpaceEnd === to - 1 && (flags[whiteSpaceEnd] & KIND_BITS) === HARD_BREAK);
-        return onlyOpening ? extraWidth : extraWidth / 2;
+        return onlyOpening ? extraWidth : startEdge;
     }
     return extraWidth;
 }

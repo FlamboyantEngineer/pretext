@@ -47,6 +47,7 @@ export type EngineProfile = {
     hardBreakItemRetreat: 'item' | 'last-grapheme' | 'fit';
     paddedOpeningFit: 'start' | 'placed' | 'both';
     emptyAtomicAlwaysFits: boolean;
+    fitsClonedEndEdge: boolean;
     zeroWidthSpaceStaysAfterAtomic: boolean;
     hangsSpacesPerTextFrame: boolean;
     testsHyphenBeforeAtomic: boolean;

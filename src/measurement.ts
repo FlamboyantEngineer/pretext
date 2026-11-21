@@ -333,6 +333,11 @@ export type EngineProfile = {
   // (setEmptyObjectFacts in src/rich-inline.ts). Blink and WebKit fit it as any other atomic
   // inline and move it to the next line.
   emptyAtomicAlwaysFits: boolean
+  // Whether a line that ends inside a padded item fits the item's cloned end edge, which it paints
+  // there (box-decoration-break: clone). Blink fits the line without it, as only a test-only flag
+  // narrows the line for it (BoxDecorationBreakCloneLineBreaking, line_breaker.cc:454-461; the
+  // extraWidthEnd of a RichInlineItem). WebKit and Gecko keep fitting the whole extraWidth here.
+  fitsClonedEndEdge: boolean
   // Whether a zero-width space right after an atomic item or a box wider than its line stays on
   // that line. Every engine lays a zero-width space out as text of no width (walkPreparedComplexLines
   // in src/line-break.ts has the rule), and Blink and WebKit break after an atomic inline
@@ -1064,6 +1069,7 @@ function buildEngineProfile(): EngineProfile {
     hardBreakItemRetreat: engine === 'blink' ? 'item' : engine === 'webkit' ? 'fit' : 'last-grapheme',
     paddedOpeningFit: engine === 'blink' ? 'start' : engine === 'webkit' ? 'placed' : 'both',
     emptyAtomicAlwaysFits: engine === 'gecko',
+    fitsClonedEndEdge: engine !== 'blink',
     zeroWidthSpaceStaysAfterAtomic: engine === 'gecko',
     hangsSpacesPerTextFrame: engine === 'gecko',
     testsHyphenBeforeAtomic: engine !== 'webkit',
