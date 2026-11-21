@@ -76,3 +76,9 @@ Line breaking in Chromium matches Chrome more closely, and the engine inputs can
 `setMeasureContext(create)` lets the app make the Canvas contexts Pretext measures through, for example under
 `textRendering = 'geometricPrecision'`, without which Chrome's Linux headless shell measures hinted whole-pixel widths
 (#6).
+
+### 1.0.0-fe.4
+
+`extraWidthEnd`, a rich-inline item field, gives the end side of the item's `extraWidth`. Chrome fits a line that ends
+inside a padded `box-decoration-break: clone` span without the span's cloned end edge, so the Chromium profile now does
+too; a line the span ends on still fits both edges (#7).

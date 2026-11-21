@@ -4,6 +4,7 @@
 
 ### Added
 
+- `extraWidthEnd`, a field of a rich-inline item, gives the part of its `extraWidth` on its end side. In Chrome a line that ends inside a padded item now fits without that end edge, as Chrome fits a `box-decoration-break: clone` span's cloned end edge only where the span ends on the line, so such a line keeps the word Chrome keeps on it. Where a line takes only a padded item's opening, the Chrome and Safari profiles fit its start edge, the rest of its `extraWidth`, in place of half of it.
 - `setMeasureContext(create?)` measures text through the Canvas 2D contexts an app makes, such as ones under `textRendering = 'geometricPrecision'`, which Chrome's headless shell needs to measure without hinting; `setMeasureContext()` goes back to Pretext's own.
 - `accurateLineEnds`, an option of `prepare()`, `prepareWithSegments()` and `prepareRichInline()` and a field of a rich-inline item, says that Chrome needs a line's exact end there: under a `text-align` other than start, or for an item with a text decoration or a background.
 - `setLayoutScale(scale?)` gives the device pixels per CSS pixel the text lays out at. In Chrome a line now fits as Chrome fits it, against the width truncated to 1/64 of a device pixel plus one such unit, where it took a 0.005 px allowance: a line whose content sits within a unit of its width now breaks where Chrome breaks it, at any pixel ratio or zoom it is told.
