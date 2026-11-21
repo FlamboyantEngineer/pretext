@@ -15,6 +15,11 @@ first and are offered upstream afterwards. Everything else in this repository is
 A version is upstream's last release plus `-fe.<n>`, counting the fork's releases on that upstream release: `1.0.0-fe.1`,
 `1.0.0-fe.2`, then `1.1.0-fe.1` once `main` holds upstream's 1.1.0.
 
+## Checks
+
+`.github/workflows/fork-check.yml` runs `bun test --parallel`, `bun run check` and `bun run package-smoke-test` on every
+pull request and on `main`. Upstream's demo-site workflow (`pages.yml`) runs only in upstream's repository.
+
 ## Installing a release
 
 Pin the release commit, not the tag or a branch, so the lockfile and the installed bytes can't move:
