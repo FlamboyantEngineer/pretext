@@ -5,6 +5,7 @@
 ### Added
 
 - `accurateLineEnds`, an option of `prepare()`, `prepareWithSegments()` and `prepareRichInline()` and a field of a rich-inline item, says that Chrome needs a line's exact end there: under a `text-align` other than start, or for an item with a text decoration or a background.
+- `setEngine(engine?)` lays text out by one engine's rules, `'blink'`, `'webkit'` or `'gecko'`, whatever the user agent names, and `setEngine()` goes back to the user agent's. The README shows how to register fonts in a worker.
 
 ### Changed
 

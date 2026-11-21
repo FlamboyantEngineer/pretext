@@ -22,7 +22,9 @@ import {
   getEngineProfile,
   getPreparationLanguage,
   readLetterSpacing,
+  setEngineOverride,
   setLocaleLanguage,
+  type LayoutEngine,
 } from './measurement.js'
 import { measureAnalysis } from './prepare.js'
 import {
@@ -371,5 +373,18 @@ export function clearCache(): void {
 // handles keep theirs (RESEARCH.md, Decisions Log, 2026-09-26).
 export function setLocale(locale?: string): void {
   setLocaleLanguage(locale)
+  clearCache()
+}
+
+export type { LayoutEngine }
+
+// Sets the layout engine whose rules later preparation and layout follow, in place of the
+// one the user agent names: 'blink' (Chrome, Edge), 'webkit' (Safari) or 'gecko' (Firefox).
+// An app that lays text out for one engine whatever runs it, such as a document paged by
+// Chrome's rules in every browser or in a server-side test, names it. Without an engine the
+// user agent decides again. Canvas widths still come from the browser that runs it. Prepared
+// handles don't keep the engine, so prepare again after a change.
+export function setEngine(engine?: LayoutEngine): void {
+  setEngineOverride(engine)
   clearCache()
 }

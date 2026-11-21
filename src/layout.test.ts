@@ -2442,6 +2442,32 @@ describe('prepare invariants', () => {
     }
   })
 
+  test('setEngine() gives the named engine\'s whole profile whatever the user agent, until it is called without one', async () => {
+    const { setEngine } = await import('./layout.ts')
+    const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'navigator')
+    try {
+      // A user agent that names no engine, on a platform whose WebKit names generic families by language.
+      Object.defineProperty(globalThis, 'navigator', { value: { userAgent: 'Bun/1.4.4', platform: 'MacIntel' }, configurable: true })
+      for (const [engine, userAgent] of [['blink', CHROME_USER_AGENT], ['webkit', SAFARI_USER_AGENT], ['gecko', FIREFOX_USER_AGENT]] as const) {
+        setEngine(engine)
+        expect({ engine, profile: getEngineProfile() }).toEqual({ engine, profile: await engineProfileUnder(userAgent) })
+      }
+      Object.defineProperty(globalThis, 'navigator', { value: { userAgent: FIREFOX_USER_AGENT }, configurable: true })
+      setEngine('blink')
+      expect(getEngineProfile().lineBreakScan).toBe('blink')
+      setEngine()
+      expect(getEngineProfile().lineBreakScan).toBe('gecko')
+      // Where there is no navigator at all, a WebKit profile names no generic families.
+      Reflect.deleteProperty(globalThis, 'navigator')
+      setEngine('webkit')
+      expect(getEngineProfile().namesGenericFamiliesByLanguage).toBe(false)
+    } finally {
+      if (descriptor === undefined) Reflect.deleteProperty(globalThis, 'navigator')
+      else Object.defineProperty(globalThis, 'navigator', descriptor)
+      setEngine()
+    }
+  })
+
   test('the library has no regex lookbehind, which a JavaScriptCore without it refuses to load', async () => {
     // JavaScriptCore checks every regex literal when it parses a module, so where it can't
     // parse a lookbehind, one stops the whole library from loading, whichever engine's path
