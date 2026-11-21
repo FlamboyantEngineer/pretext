@@ -2,7 +2,7 @@
 // bundle, so every library runs its own code, and each copy a document evaluates carries a comment of its own, so no
 // document or library reuses code another compiled.
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 
 const ROOT = resolve(import.meta.dir, '../..')
@@ -14,8 +14,18 @@ export function srcOf(refOrDir: string): string {
   const sha = execFileSync('git', ['rev-parse', refOrDir], { cwd: ROOT, encoding: 'utf8' }).trim()
   const dir = join(ROOT, '.artifacts/harness-builds', sha)
   if (!existsSync(join(dir, 'src/layout.ts'))) {
-    mkdirSync(dir, { recursive: true })
-    execFileSync('sh', ['-c', `git archive ${sha} src $(git ls-tree --name-only ${sha} harness/ | grep '\\.ts$') | tar -x -C "${dir}"`], { cwd: ROOT })
+    // Unpacked beside it and renamed into place, so a test file running at the same time never reads a half-unpacked
+    // build: whichever process renames first wins, and the other drops its copy.
+    const unpacking = `${dir}.${process.pid}`
+    rmSync(unpacking, { recursive: true, force: true })
+    mkdirSync(unpacking, { recursive: true })
+    execFileSync('sh', ['-c', `git archive ${sha} src $(git ls-tree --name-only ${sha} harness/ | grep '\\.ts$') | tar -x -C "${unpacking}"`], { cwd: ROOT })
+    try {
+      renameSync(unpacking, dir)
+    } catch {
+      rmSync(unpacking, { recursive: true, force: true })
+      if (!existsSync(join(dir, 'src/layout.ts'))) throw new Error(`could not unpack ${sha} into ${dir}`)
+    }
   }
   return join(dir, 'src')
 }
