@@ -401,7 +401,9 @@ function getWholeRunContext(measurement) {
     const state = measurement.state;
     if (state.wholeRunContext === null) {
         state.wholeRunContext = createContext(state.language);
-        state.wholeRunContext.textRendering = 'optimizeLegibility';
+        // geometricPrecision, which an app's contexts may be made under, shapes a string whole too.
+        if (state.wholeRunContext.textRendering !== 'geometricPrecision')
+            state.wholeRunContext.textRendering = 'optimizeLegibility';
     }
     if (state.wholeRunFont !== measurement.kanaFont)
         state.wholeRunContext.font = state.wholeRunFont = measurement.kanaFont;
@@ -993,12 +995,19 @@ export function getContext(measurement) {
         state.context.letterSpacing = state.letterSpacing = measurement.letterSpacing;
     return state.context;
 }
-// A context's `lang` follows the page's, and preparation's can be setLocale()'s or Blink's
-// default locale instead.
+let contextFactory;
+// The app's way to make the contexts preparation measures through, or none for Pretext's own.
+// Everything measured through the contexts before goes with them.
+export function setContextFactory(factory) {
+    contextFactory = factory;
+    measureState = null;
+}
 function createContext(language) {
     // jsdom and happy-dom have a document whose canvas gives no 2D context: getContext() returns null there.
     let context = null;
-    if (typeof OffscreenCanvas !== 'undefined')
+    if (contextFactory !== undefined)
+        context = contextFactory();
+    else if (typeof OffscreenCanvas !== 'undefined')
         context = new OffscreenCanvas(1, 1).getContext('2d');
     else if (typeof document !== 'undefined')
         context = document.createElement('canvas').getContext('2d');

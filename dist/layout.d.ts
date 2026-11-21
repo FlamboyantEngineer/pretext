@@ -1,5 +1,5 @@
 import { type SegmentBreakKind, type WhiteSpaceMode, type WordBreakMode as AnalysisWordBreakMode } from './analysis.js';
-import { type LayoutEngine } from './measurement.js';
+import { type LayoutEngine, type MeasureContext } from './measurement.js';
 declare const preparedTextBrand: unique symbol;
 export type PreparedText = {
     readonly [preparedTextBrand]: true;
@@ -54,7 +54,8 @@ export declare function layoutNextLineRange(prepared: PreparedText, maxWidth: nu
 export declare function layoutWithLines(prepared: PreparedTextWithSegments, maxWidth: number, lineHeight: number): LayoutLinesResult;
 export declare function clearCache(): void;
 export declare function setLocale(locale?: string): void;
-export type { LayoutEngine };
+export type { LayoutEngine, MeasureContext };
 export declare function setEngine(engine?: LayoutEngine): void;
+export declare function setMeasureContext(create?: () => MeasureContext): void;
 export declare function setLayoutScale(scale?: number): void;
 //# sourceMappingURL=layout.d.ts.map

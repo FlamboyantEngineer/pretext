@@ -390,7 +390,8 @@ type MeasureState = {
   context: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D // Once made, read through getContext() alone
   font: string // The font getContext() set the context to since a font was last looked up, or ''
   letterSpacing: string // The letterSpacing getContext() last set the context to
-  // A second context, under text-rendering: optimizeLegibility, where Canvas shapes a string
+  // A second context, under text-rendering: optimizeLegibility (or the geometricPrecision of an
+  // app's context), where Canvas shapes a string
   // whole, and the Canvas font it is set to: made for the first font asked about its kana
   // (getFontKanaKerning).
   wholeRunContext: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D | null
@@ -847,7 +848,8 @@ function getWholeRunContext(measurement: FontMeasurement): CanvasRenderingContex
   const state = measurement.state
   if (state.wholeRunContext === null) {
     state.wholeRunContext = createContext(state.language)
-    state.wholeRunContext.textRendering = 'optimizeLegibility'
+    // geometricPrecision, which an app's contexts may be made under, shapes a string whole too.
+    if (state.wholeRunContext.textRendering !== 'geometricPrecision') state.wholeRunContext.textRendering = 'optimizeLegibility'
   }
   if (state.wholeRunFont !== measurement.kanaFont) state.wholeRunContext.font = state.wholeRunFont = measurement.kanaFont
   return state.wholeRunContext
@@ -1454,10 +1456,21 @@ export function getContext(measurement: FontMeasurement): CanvasRenderingContext
 
 // A context's `lang` follows the page's, and preparation's can be setLocale()'s or Blink's
 // default locale instead.
-function createContext(language: string | null): CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D {
+export type MeasureContext = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D
+let contextFactory: (() => MeasureContext) | undefined
+
+// The app's way to make the contexts preparation measures through, or none for Pretext's own.
+// Everything measured through the contexts before goes with them.
+export function setContextFactory(factory: (() => MeasureContext) | undefined): void {
+  contextFactory = factory
+  measureState = null
+}
+
+function createContext(language: string | null): MeasureContext {
   // jsdom and happy-dom have a document whose canvas gives no 2D context: getContext() returns null there.
-  let context: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D | null = null
-  if (typeof OffscreenCanvas !== 'undefined') context = new OffscreenCanvas(1, 1).getContext('2d')
+  let context: MeasureContext | null = null
+  if (contextFactory !== undefined) context = contextFactory()
+  else if (typeof OffscreenCanvas !== 'undefined') context = new OffscreenCanvas(1, 1).getContext('2d')
   else if (typeof document !== 'undefined') context = document.createElement('canvas').getContext('2d')
   if (context === null) throw new Error('Text measurement requires OffscreenCanvas or a DOM canvas context.')
   if (language !== null && 'lang' in context) context.lang = language

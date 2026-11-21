@@ -9,7 +9,7 @@
 // Based on Sebastian Markbage's text-layout research (github.com/chenglou/text-layout).
 import { clearWordSegmenter } from './line-breaks.js';
 import { analyzeText, KIND_BITS, SEGMENT_KINDS, } from './analysis.js';
-import { clearMeasurementCaches, getEngineProfile, getPreparationLanguage, readLetterSpacing, setEngineOverride, setLayoutScaleValue, setLocaleLanguage, } from './measurement.js';
+import { clearMeasurementCaches, getEngineProfile, getPreparationLanguage, readLetterSpacing, setContextFactory, setEngineOverride, setLayoutScaleValue, setLocaleLanguage, } from './measurement.js';
 import { measureAnalysis } from './prepare.js';
 import { countPreparedLines, normalizeMaxWidth, normalizePreparedLineStart, stepPreparedLineGeometryFromStart, walkPreparedLinesRaw, } from './line-break.js';
 import { buildLineTextFromRange } from './line-text.js';
@@ -188,6 +188,17 @@ export function setLocale(locale) {
 // handles don't keep the engine, so prepare again after a change.
 export function setEngine(engine) {
     setEngineOverride(engine);
+    clearCache();
+}
+// Sets how the Canvas 2D contexts that preparation measures through are made, for an app that
+// needs them made its way: Chrome's headless shell, for one, measures under hinting unless the
+// context's textRendering is 'geometricPrecision', so widths differ from machine to machine.
+// Each call of `create` must give a new context; preparation sets its font, letter spacing and
+// language. Without a function, Pretext makes its own again (an OffscreenCanvas, else a canvas
+// element). The caches go, since they hold widths measured the old way; prepared handles keep
+// theirs, so prepare again after a change.
+export function setMeasureContext(create) {
+    setContextFactory(create);
     clearCache();
 }
 // Sets how many device pixels a CSS pixel of the laid-out text takes: the page's

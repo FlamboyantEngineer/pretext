@@ -115,6 +115,8 @@ export declare function getCorrectedSegmentWidth(seg: string, metrics: SegmentMe
 export declare function getSegmentFit(seg: string, metrics: SegmentMetrics, measurement: FontMeasurement, emojiCorrection: number, mode: BreakableFitMode, followingSpaceWidth?: number | null): SegmentFit;
 export declare function getFontMeasurement(font: string, language: string | null, letterSpaced: boolean): FontMeasurement;
 export declare function getContext(measurement: FontMeasurement): CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
+export type MeasureContext = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
+export declare function setContextFactory(factory: (() => MeasureContext) | undefined): void;
 export declare function clearMeasurementCaches(): void;
 export {};
 //# sourceMappingURL=measurement.d.ts.map
