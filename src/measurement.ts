@@ -638,7 +638,9 @@ export function getPreparationLanguage(profile: EngineProfile): string | null {
   // have one paragraph measured partly from the caches and partly anew.
   if (measureState !== null && measureState.segments > MAX_CACHED_SEGMENTS) clearMeasurementCaches()
   let language = localeLanguage ?? null
-  if (localeLanguage === undefined && typeof document !== 'undefined') {
+  // Under the app's contexts (setMeasureContext) the language is setLocale()'s alone, so
+  // preparation reads nothing from the page.
+  if (localeLanguage === undefined && contextFactory === undefined && typeof document !== 'undefined') {
     const lang = (document.documentElement as HTMLElement | null | undefined)?.lang
     if (typeof lang === 'string') language = lang
   }
@@ -1110,7 +1112,9 @@ export function getEmojiCorrection(font: string, measurement: FontMeasurement): 
   const askedBefore = measurement.emojiWidth !== 0
   const canvasW = measurement.emojiWidth = getContext(measurement).measureText('\u{1F600}').width
   correction = 0
-  if (canvasW > fontSize + 0.5 && typeof document !== 'undefined') {
+  // Contexts the app makes measure as its own text draws (setMeasureContext), so their widths
+  // are taken as they are, and preparation reads nothing from the page: no span is drawn.
+  if (canvasW > fontSize + 0.5 && contextFactory === undefined && typeof document !== 'undefined') {
     const domW = readEmojiWidth(font)
     // A document with no box for the span, as in an iframe that is display: none, has no
     // width to read. The text goes uncorrected, as in a worker, and nothing is kept: the next
