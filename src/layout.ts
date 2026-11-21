@@ -101,6 +101,9 @@ export type PrepareOptions = {
   whiteSpace?: WhiteSpaceMode
   wordBreak?: WordBreakMode
   letterSpacing?: number
+  // Chrome only: where the text's line ends must be exact, as under a CSS text-align other than
+  // start (center, end, justify) or for text with a decoration or a background
+  accurateLineEnds?: boolean
 }
 
 // --- Public API ---
@@ -117,7 +120,7 @@ function prepareInternal(
   // One language read: break rules and measurement both follow it.
   const language = getPreparationLanguage(engineProfile)
   const analysis = analyzeText(text, engineProfile, options?.whiteSpace, wordBreak, language)
-  return measureAnalysis(analysis, 0, analysis.flags.length, font, includeSegments, letterSpacing, engineProfile, language, true, null)
+  return measureAnalysis(analysis, 0, analysis.flags.length, font, includeSegments, letterSpacing, engineProfile, language, true, null, options?.accurateLineEnds === true)
 }
 
 // Prepare text for layout. Segments the text, measures each segment via canvas,

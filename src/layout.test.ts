@@ -6854,13 +6854,42 @@ test('the Chromium profile takes the kerning between a word and the spaces besid
       ['BB TT', '16px Test', {}], ['xW y', '16px Wide', {}], ['y Wx', '16px Wide', {}],
       ['AA TT', '16px Plain', {}], ['\\u0436\\u0436 \\u0422\\u0422', '16px Cyrillic', {}],
     ]) widths.push(prepareWithSegments(text, font, options).widths)
+    const accurateWidths = [prepareWithSegments('AA TT', '16px Test', { accurateLineEnds: true }).widths, prepareWithSegments('BB TT', '16px Test', { accurateLineEnds: true }).widths]
     const lines = []
-    for (const [text, width, font] of [['AA TT', 20, '16px Test'], ['AA TT', 37, '16px Test'], ['AAA TT', 10.5, '16px Test'], ['BB TT', 16.5, '16px Test']]) {
-      const result = layoutWithLines(prepareWithSegments(text, font), width, 20)
-      lines.push({ lines: result.lines.map(line => [line.text, line.width]), lineCount: layout(prepare(text, font), width, 20).lineCount })
+    for (const accurateLineEnds of [false, true]) {
+      for (const [text, width, font] of [['AA TT', 19.5, '16px Test'], ['AA TT', 37, '16px Test'], ['AAA TT', 10.5, '16px Test'], ['BB TT', 16.5, '16px Test']]) {
+        const result = layoutWithLines(prepareWithSegments(text, font, { accurateLineEnds }), width, 20)
+        lines.push({ lines: result.lines.map(line => [line.text, line.width]), lineCount: layout(prepare(text, font, { accurateLineEnds }), width, 20).lineCount })
+      }
     }
-    const rich = [[{ text: 'AA TT', font: '16px Test' }], [{ text: 'AA', font: '16px Test' }, { text: ' TT', font: '16px Test' }]]
-      .map(items => measureRichInlineStats(prepareRichInline(items), 100).maxLineWidth)
+    const richOf = (items, options, width = 100) => {
+      const prepared = prepareRichInline(items, options)
+      return [measureRichInlineStats(prepared, width).lineCount, measureRichInlineStats(prepared, width).maxLineWidth]
+    }
+    const rich = [
+      richOf([{ text: 'AA TT', font: '16px Test' }]),
+      richOf([{ text: 'AA', font: '16px Test' }, { text: ' TT', font: '16px Test' }]),
+      richOf([{ text: 'AA ', font: '16px Test' }, { text: 'TT', font: '16px Test' }]),
+      richOf([{ text: 'AA', font: '16px Test' }, { text: ' ', font: '16px Test' }, { text: 'TT', font: '16px Test' }]),
+      // Items that don't shape as one run: another font, letter spacing, extraWidth, an atomic item.
+      richOf([{ text: 'AA', font: '16px Test' }, { text: ' TT', font: '16px Test2' }]),
+      richOf([{ text: 'AA', font: '16px Test' }, { text: ' TT', font: '16px Test', letterSpacing: 0.5 }]),
+      richOf([{ text: 'AA', font: '16px Test' }, { text: ' TT', font: '16px Test', extraWidth: 2 }]),
+      richOf([{ text: 'AA', font: '16px Test', break: 'never' }, { text: ' TT', font: '16px Test' }]),
+      // A right-to-left letter anywhere in the paragraph: no kerning across items.
+      richOf([{ text: 'AA', font: '16px Test' }, { text: ' TT \u05D0', font: '16px Test' }]),
+      // A line that ends at a space: the word keeps its kerning, unless its item or the
+      // paragraph needs accurate line ends and the item goes on after the space, where the
+      // space that hangs takes it. A word before another item's space, or an item that ends
+      // with the space, fits whole and keeps it.
+      richOf([{ text: 'AA', font: '16px Test' }, { text: ' TT', font: '16px Test' }], undefined, 19.5),
+      richOf([{ text: 'AA TT', font: '16px Test', accurateLineEnds: true }], undefined, 19.5),
+      richOf([{ text: 'AA TT', font: '16px Test' }, { text: '', font: '16px Test' }], { accurateLineEnds: true }, 19.5),
+      richOf([{ text: 'AA TT', font: '16px Test', accurateLineEnds: true }, { text: ' x', font: '16px Test' }], undefined, 19.5),
+      richOf([{ text: 'AA', font: '16px Test', accurateLineEnds: true }, { text: ' TT', font: '16px Test' }], undefined, 19.5),
+      richOf([{ text: 'AA ', font: '16px Test' }, { text: 'TT', font: '16px Test' }], { accurateLineEnds: true }, 19.5),
+      richOf([{ text: 'AA', font: '16px Test' }, { text: ' ', font: '16px Test' }, { text: 'TT', font: '16px Test' }], { accurateLineEnds: true }),
+    ]
     // What a prepare asks Canvas with a U+2028 in it, the font's probe as its length.
     const asks = (text, font) => {
       measured.length = 0
@@ -6871,22 +6900,24 @@ test('the Chromium profile takes the kerning between a word and the spaces besid
     const cut = measured.filter(text => text.length > 1 && text.includes(' '))
     const fontAsked = [asks('AATT', '16px Fresh Two'), asks('AA TT AT', '16px Plain Two'), asks('AA TT', '16px Plain Two'), asks('AA TT', '16px Glyph Two')]
     const unasked = [asks('\\u6F22 \\u3042 \\u30A2 \\uD55C\\uAD6D \\u6F22', '16px Words'), asks('\\u05D0 AA TT', '16px Mixed')]
-    console.log(JSON.stringify({ widths, lines, rich, asked, fontAsked, unasked, cut }))
+    console.log(JSON.stringify({ widths, accurateWidths, lines, rich, asked, fontAsked, unasked, cut }))
   `
-  const { widths, lines, rich, asked, fontAsked, unasked, cut } = JSON.parse(runInChild(script)) as Record<'widths' | 'lines' | 'rich' | 'asked' | 'fontAsked' | 'unasked' | 'cut', unknown>
+  const { widths, accurateWidths, lines, rich, asked, fontAsked, unasked, cut } =
+    JSON.parse(runInChild(script)) as Record<'widths' | 'accurateWidths' | 'lines' | 'rich' | 'asked' | 'fontAsked' | 'unasked' | 'cut', unknown>
   expect(widths).toEqual([
-    // The space takes the word's kerning with it, which tightens the two, and its own with
-    // the word after it.
-    [20, 1, 16],
+    // The word keeps its kerning with the space after it, which tightens the two, as Blink
+    // takes a line's end from the run shaped whole; the space takes its own with the word
+    // after it.
+    [19, 2, 16],
     [16, 4, 20],
     // The first and the last of a run of preserved spaces.
-    [20, 5, 16],
+    [19, 6, 16],
     // HarfBuzz's lookups skip a word joiner, on either side.
-    [20, 1, 16],
+    [19, 2, 16],
     // A mark after the space is the space's own cluster, no pair with it.
-    [20, 3, 8],
+    [19, 4, 8],
     // Letter spacing keeps the kerning.
-    [21, 1, 17],
+    [20, 2, 17],
     // The space is in the script run of the text before it: after Cyrillic it kerns
     // with a Cyrillic word, not with a Latin one, and a comma keeps the run's script.
     [16, 4, 16],
@@ -6914,7 +6945,7 @@ test('the Chromium profile takes the kerning between a word and the spaces besid
     [28, 4, 16],
     // A first letter with a combining mark after it may be drawn as one glyph, which the
     // bare letter's kerning with the space says nothing about.
-    [20, 3, 16],
+    [19, 4, 16],
     // Script_Extensions: an ideographic full stop is in East Asian scripts only, so it ends a
     // Latin run and the space after it is in its run. A middle dot is in Latin and Greek among
     // others: it goes on a Latin run, and after Greek it leaves the run Greek.
@@ -6953,18 +6984,32 @@ test('the Chromium profile takes the kerning between a word and the spaces besid
     [20, 4, 16],
     [16, 4, 16],
   ])
+  // Under accurate line ends a kerning that tightens a word and the space after it is on the
+  // space; one that widens them stays on the word.
+  expect(accurateWidths).toEqual([[20, 1, 16], [17, 2, 16]])
   expect(lines).toEqual([
-    // The space hangs with the kerning it took from both words, so a line that ends there
-    // has the word without it.
-    { lines: [['AA ', 20], ['TT', 16]], lineCount: 2 },
+    // A line that ends at the space has the word with its kerning with the space, which
+    // tightens the two.
+    { lines: [['AA ', 19], ['TT', 16]], lineCount: 2 },
     { lines: [['AA TT', 37]], lineCount: 1 },
-    { lines: [['A', 10], ['A', 10], ['A ', 10], ['T', 8], ['T', 8]], lineCount: 5 },
+    { lines: [['A', 10], ['A', 10], ['A ', 9], ['T', 8], ['T', 8]], lineCount: 5 },
     // A word needs the room of a kerning that widens it, on its last letter where it breaks.
     { lines: [['B', 8], ['B ', 9], ['TT', 16]], lineCount: 3 },
+    // Under accurate line ends the space hangs with the kerning it took from both words, so a
+    // line that ends there has the word without it, and needs the word's whole width.
+    { lines: [['A', 10], ['A ', 10], ['TT', 16]], lineCount: 3 },
+    { lines: [['AA TT', 37]], lineCount: 1 },
+    { lines: [['A', 10], ['A', 10], ['A ', 10], ['T', 8], ['T', 8]], lineCount: 5 },
+    { lines: [['B', 8], ['B ', 9], ['TT', 16]], lineCount: 3 },
   ])
-  // A space kerns with the words of its own rich item, as in plain text, and not with a
-  // word of another item (ENGINE_FOLLOWUPS.md): `AA`, ` TT` take the kerning of ` T` alone.
-  expect(rich).toEqual([37, 38])
+  // A space kerns with the words beside it across neighbouring items that shape as one run,
+  // as in one item: `AA`, ` TT` are as wide as `AA TT`. Items that don't shape together, or a
+  // paragraph that mixes directions, take only the kerning inside each item.
+  expect(rich).toEqual([
+    [1, 37], [1, 37], [1, 37], [1, 37],
+    [1, 38], [1, 39.5], [1, 40], [1, 38], [1, 52],
+    [2, 19], [3, 16], [3, 16], [4, 16], [2, 19], [2, 19], [1, 37],
+  ])
   // The font is asked once whether it kerns the space: U+2028 between the printable ASCII
   // characters, 189 units, as the context stands and under fontKerning 'none', then U+2028
   // alone. Then each edge letter once with U+2028, however many words share the letter. No

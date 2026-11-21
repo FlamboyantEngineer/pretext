@@ -136,13 +136,13 @@ For `white-space: pre-wrap` or `word-break: keep-all` on the paragraph, pass `{ 
 
 Use-case 1 APIs:
 ```ts
-prepare(text: string, font: string, options?: { whiteSpace?: 'normal' | 'pre-wrap', wordBreak?: 'normal' | 'keep-all', letterSpacing?: number }): PreparedText // one-time text analysis + measurement pass, returns an opaque value to pass to `layout()` and to the APIs below that don't return text. Make sure `font` and `letterSpacing` are synced with your CSS for the text you're measuring. `font` is the same format as what you'd use for `myCanvasContext.font = ...`, e.g. `16px Inter`; `letterSpacing` is a CSS pixel value, and must be finite.
+prepare(text: string, font: string, options?: { whiteSpace?: 'normal' | 'pre-wrap', wordBreak?: 'normal' | 'keep-all', letterSpacing?: number, accurateLineEnds?: boolean }): PreparedText // one-time text analysis + measurement pass, returns an opaque value to pass to `layout()` and to the APIs below that don't return text. Make sure `font` and `letterSpacing` are synced with your CSS for the text you're measuring. In Chrome, pass `accurateLineEnds: true` for text under a `text-align` other than start (center, end, justify) or with a text decoration or a background: Chrome then ends such a line without the last word's kerning with the space after it. `font` is the same format as what you'd use for `myCanvasContext.font = ...`, e.g. `16px Inter`; `letterSpacing` is a CSS pixel value, and must be finite.
 layout(prepared: PreparedText, maxWidth: number, lineHeight: number): { height: number, lineCount: number } // calculates text height given a max width and lineHeight. Make sure `lineHeight` is synced with your css `line-height` declaration for the text you're measuring.
 ```
 
 Use-case 2 APIs:
 ```ts
-prepareWithSegments(text: string, font: string, options?: { whiteSpace?: 'normal' | 'pre-wrap', wordBreak?: 'normal' | 'keep-all', letterSpacing?: number }): PreparedTextWithSegments // same as `prepare()`, but returns a richer structure for manual line layout needs
+prepareWithSegments(text: string, font: string, options?: { whiteSpace?: 'normal' | 'pre-wrap', wordBreak?: 'normal' | 'keep-all', letterSpacing?: number, accurateLineEnds?: boolean }): PreparedTextWithSegments // same as `prepare()`, but returns a richer structure for manual line layout needs
 layoutWithLines(prepared: PreparedTextWithSegments, maxWidth: number, lineHeight: number): { height: number, lineCount: number, lines: LayoutLine[] } // high-level api for manual layout needs. Accepts a fixed max width for all lines. Similar to `layout()`'s return, but additionally returns the lines info
 walkLineRanges(prepared: PreparedText, maxWidth: number, onLine: (line: LayoutLineRange) => void): number // low-level api for manual layout needs. Accepts a fixed max width for all lines. Calls `onLine` once per line with its actual calculated line width and start/end cursors, without building line text strings. Very useful for certain cases where you wanna speculatively test a few width and height boundaries (e.g. binary search a nice width value by repeatedly calling walkLineRanges and checking the line count, and therefore height, is "nice" too). You can have text messages shrinkwrap and balanced text layout this way. After walkLineRanges calls, you'd call layoutWithLines once, with your satisfying max width, to get the actual lines info.
 measureLineStats(prepared: PreparedText, maxWidth: number): { lineCount: number, maxLineWidth: number } // returns only how many lines this width produces, and how wide the widest one is. Avoids line/string allocations.
@@ -179,7 +179,7 @@ type LayoutCursor = {
 
 Helper for rich-text inline flow:
 ```ts
-prepareRichInline(items: Array<RichInlineItem | RichInlineBox>, options?: { whiteSpace?: 'normal' | 'pre-wrap', wordBreak?: 'normal' | 'keep-all' }): PreparedRichInline // prepares the items for layout and, in `white-space: normal`, collapses spaces between them. `whiteSpace` and `wordBreak` are the paragraph's, as in `prepare()`
+prepareRichInline(items: Array<RichInlineItem | RichInlineBox>, options?: { whiteSpace?: 'normal' | 'pre-wrap', wordBreak?: 'normal' | 'keep-all', accurateLineEnds?: boolean }): PreparedRichInline // prepares the items for layout and, in `white-space: normal`, collapses spaces between them. `whiteSpace` and `wordBreak` are the paragraph's, as in `prepare()`; so is `accurateLineEnds`, for a `text-align` other than start
 layoutNextRichInlineLineRange(prepared: PreparedRichInline, maxWidth: number, start?: RichInlineCursor): RichInlineLineRange | null // stream one line of rich-text inline flow at a time without building fragment text strings
 walkRichInlineLineRanges(prepared: PreparedRichInline, maxWidth: number, onLine: (line: RichInlineLineRange) => void): number // non-materializing line walker for rich-text inline flow shrinkwrap/stats work
 materializeRichInlineLineRange(prepared: PreparedRichInline, line: RichInlineLineRange): RichInlineLine // turns one previously computed rich-inline line range back into full fragment text
@@ -190,6 +190,7 @@ type RichInlineItem = {
   letterSpacing?: number // extra horizontal spacing between graphemes, in CSS px
   break?: 'normal' | 'never' // `never` makes the item atomic: one box that can't break inside, as CSS `display: inline-block` does. A line can break on either side of it, whatever touches it
   extraWidth?: number // extra width around the text, e.g. padding and borders
+  accurateLineEnds?: boolean // Chrome: the item's element has a text decoration or a background, as a link or a highlight does
 }
 type RichInlineBox = {
   width: number // the room an object inside the line takes, e.g. an image, in CSS px: its element's margin box. Finite and at least 0
@@ -247,7 +248,7 @@ Notes:
 - Paint a `never` item as `display: inline-block; white-space: nowrap`. A span with only `white-space: nowrap` stays in the text's flow, so the browser keeps a `:` or `'s` right after it on its line, where Pretext can break before them.
 - A rich-inline fragment's `gapBefore` is a space in the font and letter spacing of item `gapItemIndex`: the fragment's own item, the previous fragment's item, or an item holding only whitespace, which gets no fragment. Draw the space inside that item's element so it paints at that width. An atomic item's own leading and trailing white space makes no gap, as browsers trim it inside the item's inline-block.
 - In `pre-wrap`, rich-inline fragments have no gaps: a fragment's `text` keeps its spaces, and its `occupiedWidth`, like the line's `width`, leaves out what hangs at the line's end.
-- A rich-inline item that wraps is charged its whole `extraWidth` on every line it reaches, as CSS `box-decoration-break: clone` pads a span, where CSS's default pads only the span's two ends. Paint each fragment as its own element with the padding on both sides, as the demos do: a padded span the browser wraps itself can break elsewhere, with `clone` too. Spans without padding can too: items are measured apart, where Chrome and Firefox kern across neighbouring elements in one font.
+- A rich-inline item that wraps is charged its whole `extraWidth` on every line it reaches, as CSS `box-decoration-break: clone` pads a span, where CSS's default pads only the span's two ends. Paint each fragment as its own element with the padding on both sides, as the demos do: a padded span the browser wraps itself can break elsewhere, with `clone` too. Spans without padding can too: items are measured apart, where Firefox kerns across neighbouring elements in one font; in Chrome, a space between two such items takes its kerning with the letters on both sides.
 - Segment widths are browser-canvas widths for line breaking, not enough to position individual characters in Arabic or mixed bidi text. They don't always add up to a line's width either: a tab's is 0, the letter spacing after a segment's last letter isn't in it, and a line broken at a soft hyphen adds its hyphen. For a width, read the line's `width`, or call `measureNaturalWidth()` for the whole text.
 
 ## Caveats

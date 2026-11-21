@@ -389,17 +389,30 @@ export async function runInvariants(profile: Profile, lib: string, draws: { dir:
               const space = standInWidth(' ', gapItem.font, spacing, 'auto', 'auto')
               // The Chromium profile's space takes its kerning with the character beside it in its own item,
               // the one after the white space that starts the item or before the white space that ends it,
-              // where the profile kerns the two (getSpaceKerning in src/measurement.ts): a gap is the SPACE
-              // or the SPACE less that kerning, as this Canvas gives it (standInWidth), and nothing between.
+              // where the profile kerns the two (getSpaceKerning in src/measurement.ts), and with the character
+              // on its other side, in the neighbouring item, where the two items shape as one run (shapesWith in
+              // src/rich-inline.ts): a gap is the SPACE less none, either or both of those kernings, as this
+              // Canvas gives them (standInWidth), and nothing between.
               let kerning = 0
+              let otherKerning = 0
               if (profile === 'blink' || profile === 'unknown') {
+                const size = Number(/(\d+(?:\.\d+)?)px/.exec(gapItem.font)?.[1] ?? 16) / 16
                 const text = gapItem.text
                 const step = f.gapItemIndex === f.itemIndex ? 1 : -1
                 let beside = step === 1 ? 0 : text.length - 1
                 while (beside >= 0 && beside < text.length && ' \t\n\r\f'.includes(text[beside]!)) beside += step
-                if (beside >= 0 && beside < text.length) kerning = text.charCodeAt(beside) % 3 / 2 * Number(/(\d+(?:\.\d+)?)px/.exec(gapItem.font)?.[1] ?? 16) / 16
+                if (beside >= 0 && beside < text.length) kerning = text.charCodeAt(beside) % 3 / 2 * size
+                let other = f.gapItemIndex - step
+                while (other >= 0 && other < items.length && items[other]!.text === '') other -= step
+                const otherItem = other >= 0 && other < items.length ? items[other]! : undefined
+                if (otherItem?.text !== undefined && otherItem.font === gapItem.font && (otherItem.letterSpacing ?? 0) === (gapItem.letterSpacing ?? 0) &&
+                  otherItem.break !== 'never' && gapItem.break !== 'never' && (otherItem.extraWidth ?? 0) === 0 && (gapItem.extraWidth ?? 0) === 0) {
+                  const edge = step === 1 ? otherItem.text.length - 1 : 0
+                  if (!' \t\n\r\f'.includes(otherItem.text[edge]!)) otherKerning = otherItem.text.charCodeAt(edge) % 3 / 2 * size
+                }
               }
-              if (Math.abs(f.gapBefore - space) > 1e-6 && Math.abs(f.gapBefore - (space - kerning)) > 1e-6) fail('rich lines', at, `line ${i}'s gap before item ${f.itemIndex} is ${f.gapBefore}; item ${f.gapItemIndex}'s SPACE is ${space}, and ${space - kerning} with its kerning`)
+              const allowed = [space, space - kerning, space - otherKerning, space - kerning - otherKerning]
+              if (!allowed.some(width => Math.abs(f.gapBefore - width) <= 1e-6)) fail('rich lines', at, `line ${i}'s gap before item ${f.itemIndex} is ${f.gapBefore}; item ${f.gapItemIndex}'s SPACE is ${space}, and ${allowed.slice(1).join(', ')} with its kernings`)
             }
           }
           fragmentCounts[f.itemIndex]!++
@@ -502,6 +515,15 @@ export async function runInvariants(profile: Profile, lib: string, draws: { dir:
   plainInput('fixed a WJ U+0301 bc x16', 'a\u2060\u0301bc '.repeat(16), FONT, { letterSpacing: -1 }, widthsOf(27, false), 20)
   // A SPACE is 4px here: the gap's sign changes at letter spacing -4.
   for (const letterSpacing of [-10, -4.1, -4, -3.9, 0, 2]) rich(`fixed a gap at letter spacing ${letterSpacing}`, [{ text: 'x ', font: FONT, letterSpacing }, { text: 'y', font: FONT, letterSpacing }], Infinity)
+  // Under accurate line ends the kerning that tightens a word and the space after it is on the space, so the gap holds it,
+  // where the line goes on and where it ends there; else it is on the word.
+  for (const letterSpacing of [0, 2]) {
+    for (const width of [20, Infinity]) {
+      for (const accurateLineEnds of [false, true]) {
+        rich(`fixed a kerned gap at letter spacing ${letterSpacing}${accurateLineEnds ? ', accurate line ends' : ''}`, [{ text: 'Aw ', font: FONT, letterSpacing }, { text: 'Ay', font: FONT, letterSpacing }], width, { accurateLineEnds })
+      }
+    }
+  }
   // White space after white space and a soft hyphen takes no room in Firefox, in the next item or in the same one, but
   // keeps it after a soft hyphen that starts its item.
   for (const texts of [['see', ' \u00AD', ' this word'], ['see \u00AD ', 'this word'], ['see ', '\u00AD ', 'this word']]) {
