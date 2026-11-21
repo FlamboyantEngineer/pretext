@@ -63,8 +63,8 @@ index="$scratch/index"
 GIT_INDEX_FILE="$index" git --work-tree="$package" add -A -f .
 tree="$(GIT_INDEX_FILE="$index" git write-tree)"
 parents=()
-if git ls-remote --exit-code --heads origin release >/dev/null; then
-  git fetch -q origin release
+if git ls-remote --exit-code origin refs/heads/release >/dev/null; then
+  git fetch -q origin refs/heads/release
   parents+=(-p "$(git rev-parse FETCH_HEAD)")
 elif git rev-parse -q --verify refs/heads/release >/dev/null; then
   parents+=(-p "$(git rev-parse refs/heads/release)")
