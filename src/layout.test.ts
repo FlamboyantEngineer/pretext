@@ -2794,6 +2794,7 @@ describe('prepare invariants', () => {
       ['hardBreakItemRetreat', 'item', 'fit', 'last-grapheme'],
       ['paddedOpeningFit', 'start', 'placed', 'both'],
       ['emptyAtomicAlwaysFits', false, false, true],
+      ['fitsClonedEndEdge', false, true, true],
       ['zeroWidthSpaceStaysAfterAtomic', false, false, true],
       ['hangsSpacesPerTextFrame', false, false, true],
       ['testsHyphenBeforeAtomic', true, false, true],
@@ -4767,6 +4768,46 @@ describe('rich-inline invariants', () => {
       }
     } finally {
       profile.paddedOpeningFit = previous
+    }
+  })
+
+  test('a line that ends inside a padded item fits without the end edge the caller splits off, in the Chromium profile', () => {
+    const some = measureWidth('Some', FONT) + measureWidth(' ', FONT)
+    const by = measureWidth('by', FONT)
+    const also = measureWidth('by also', FONT)
+    const texts = (items: Parameters<typeof prepareRichInline>[0], width: number, whiteSpace: 'normal' | 'pre-wrap' = 'normal') => {
+      const prepared = prepareRichInline(items, { whiteSpace })
+      const out: string[] = []
+      walkRichInlineLineRanges(prepared, width, range => {
+        out.push(materializeRichInlineLineRange(prepared, range).fragments.map(f => f.text).join('|'))
+      })
+      expect(measureRichInlineStats(prepared, width).lineCount).toBe(out.length)
+      return out
+    }
+    const code = (text: string, extraWidthEnd?: number): RichInlineItem => ({ text, font: FONT, extraWidth: 6, ...(extraWidthEnd === undefined ? {} : { extraWidthEnd }) })
+    const profile = getEngineProfile()
+    const previous = profile.fitsClonedEndEdge
+    try {
+      // Chrome fits a line that ends inside a span with 3px of padding on each side without the
+      // span's cloned end edge, which it paints there, and fits the end edge where the span ends on
+      // the line, also where it ends with a space after the line's last word.
+      profile.fitsClonedEndEdge = false
+      for (const whiteSpace of ['normal', 'pre-wrap'] as const) {
+        // A collapsible space at the line's end isn't in its fragment; a preserved one is.
+        const lead = whiteSpace === 'normal' ? 'Some' : 'Some '
+        expect(texts([{ text: 'Some ', font: FONT }, code('by also', 3), { text: ' more', font: FONT }], some + by + 3.5, whiteSpace)[0]).toBe(`${lead}|by `)
+        expect(texts([{ text: 'Some ', font: FONT }, code('by also', 3), { text: ' more', font: FONT }], some + by + 2.5, whiteSpace)[0]).toBe(lead)
+        expect(texts([{ text: 'Some ', font: FONT }, code('by also', 3), { text: ' more', font: FONT }], some + also + 5.5, whiteSpace)[0]).toBe(`${lead}|by `)
+        expect(texts([{ text: 'Some ', font: FONT }, code('by also', 3), { text: ' more', font: FONT }], some + also + 6.5, whiteSpace)[0]!.replace(/\| $/, '')).toBe(`${lead}|by also`)
+        expect(texts([{ text: 'Some ', font: FONT }, code('by also ', 3), { text: 'more', font: FONT }], some + also + 3.5, whiteSpace)[0]!.trimEnd()).toBe(`${lead}|by also`)
+        // An extraWidth the caller doesn't split is fitted whole, as a border or a margin may be.
+        expect(texts([{ text: 'Some ', font: FONT }, code('by also'), { text: ' more', font: FONT }], some + by + 3.5, whiteSpace)[0]).toBe(lead)
+      }
+      // Safari and Firefox fit the whole extraWidth.
+      profile.fitsClonedEndEdge = true
+      expect(texts([{ text: 'Some ', font: FONT }, code('by also', 3), { text: ' more', font: FONT }], some + by + 3.5)[0]).toBe('Some')
+    } finally {
+      profile.fitsClonedEndEdge = previous
     }
   })
 
