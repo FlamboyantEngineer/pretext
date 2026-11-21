@@ -236,7 +236,21 @@ Other helpers:
 ```ts
 clearCache(): void // clears Pretext's shared internal caches used by prepare(), prepareWithSegments() and prepareRichInline(). Useful if your app cycles through many different fonts or text variants and you want to release the accumulated cache. After a web font loads, call it and prepare that font's text again: widths measured earlier are the fallback font's
 setLocale(locale?: string): void // optional (by default we use the page language, from `<html lang>`). Sets locale for future prepare(), prepareWithSegments() and prepareRichInline(). Internally, it also calls clearCache(). Setting a new locale doesn't affect existing prepared states (no mutations to them). A worker has no `<html lang>`, so call it there with the page's `document.documentElement.lang`. In a worker, small emoji measure too wide in Chrome and Firefox on macOS
+setEngine(engine?: 'blink' | 'webkit' | 'gecko'): void // optional (by default the user agent names the engine). Lays out future text by that engine's rules (Chrome and Edge are 'blink', Safari 'webkit', Firefox 'gecko') in any browser, worker or test runner, for an app whose text must break as one engine breaks it everywhere, such as pages laid out by Chrome's rules. Widths still come from the Canvas that runs it, so only the browser of that engine gives that engine's lines. Internally, it also calls clearCache(); prepare existing texts again after a change
 ```
+
+Fonts in a worker: a worker's Canvas sees only the fonts registered in that worker, not the page's `@font-face` rules or `document.fonts`. Register each font there and wait for it before preparing, or Canvas measures the fallback font without telling you:
+
+```ts
+// in the worker
+const face = new FontFace('Inter', 'url(/fonts/inter-regular.ttf)', { weight: '400' })
+self.fonts.add(face)
+await face.load()
+setLocale(pageLanguage) // a worker has no <html lang>
+const prepared = prepare(text, '16px Inter')
+```
+
+Serve the same font files to the page and to the worker, with the same `weight` and `style` descriptors as the page's `@font-face`, so that both measure the same glyphs. `self.fonts.check('16px Inter')` tells you whether a font is ready.
 
 Notes:
 - `LayoutCursor` is a segment/grapheme cursor, not a raw string offset.

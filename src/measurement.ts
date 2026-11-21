@@ -990,13 +990,25 @@ export function getEngineProfile(): EngineProfile {
   return cachedEngineProfile ??= buildEngineProfile()
 }
 
+// The engine setEngine() named, which the profile follows in place of the user agent's, or
+// undefined.
+let engineOverride: LayoutEngine | undefined
+
+// A new engine changes the profile and what the measurement state took from it (its generic
+// families and letter-spaced shaping), so both are built again.
+export function setEngineOverride(engine: LayoutEngine | undefined): void {
+  engineOverride = engine
+  cachedEngineProfile = null
+  measureState = null
+}
+
 function buildEngineProfile(): EngineProfile {
   // A navigator can lack a userAgent, as React Native's does, where lib.dom's type says it is a
   // string: such a runtime names no engine, like one with no navigator.
   const ua = typeof navigator === 'undefined' ? '' : (navigator as { userAgent?: string }).userAgent ?? ''
   // Engines Pretext doesn't recognize take Blink's profile (RESEARCH.md, Decisions Log,
   // 2026-09-26).
-  const engine = getLayoutEngine(ua) ?? 'blink'
+  const engine = engineOverride ?? getLayoutEngine(ua) ?? 'blink'
 
   return {
     lineBreakScan: engine,
@@ -1024,7 +1036,8 @@ function buildEngineProfile(): EngineProfile {
     hanKerning: engine === 'blink',
     hangsIdeographicSpace: engine !== 'webkit',
     laysOutUnderDefaultLocale: engine === 'blink',
-    namesGenericFamiliesByLanguage: engine === 'webkit' && !/^(?:Linux|Win32|Haiku|$)/.test(navigator.platform),
+    // A WebKit profile that setEngine() gave may run with no navigator, which names no families.
+    namesGenericFamiliesByLanguage: engine === 'webkit' && typeof navigator !== 'undefined' && !/^(?:Linux|Win32|Haiku|$)/.test(navigator.platform),
     hardBreakItemRetreat: engine === 'blink' ? 'item' : engine === 'webkit' ? 'fit' : 'last-grapheme',
     paddedOpeningFit: engine === 'blink' ? 'start' : engine === 'webkit' ? 'placed' : 'both',
     emptyAtomicAlwaysFits: engine === 'gecko',
