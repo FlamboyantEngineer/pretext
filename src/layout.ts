@@ -398,7 +398,10 @@ export function setEngine(engine?: LayoutEngine): void {
 // Each call of `create` must give a new context; preparation sets its font, letter spacing and
 // language. Without a function, Pretext makes its own again (an OffscreenCanvas, else a canvas
 // element). The caches go, since they hold widths measured the old way; prepared handles keep
-// theirs, so prepare again after a change.
+// theirs, so prepare again after a change. Under the app's contexts, preparation and layout read
+// nothing from the page: Canvas's emoji widths are taken as they are, where Pretext's own
+// contexts check them against a span drawn in the page, and the language is setLocale()'s, not
+// <html lang>.
 export function setMeasureContext(create?: () => MeasureContext): void {
   setContextFactory(create)
   clearCache()

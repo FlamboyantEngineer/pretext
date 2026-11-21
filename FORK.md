@@ -89,3 +89,8 @@ too; a line the span ends on still fits both edges (#7).
   Chrome adds them (`roundsItemPieces`). Line and fragment widths are the rounded ones.
 - Under pre-wrap, a preserved space that starts a rich item after other text keeps its kerning with the word after it,
   as Chrome shapes it (#8).
+
+### 1.0.0-fe.6
+
+Under `setMeasureContext()`, prediction reads nothing from the page: no emoji calibration span is drawn and measured,
+and the language comes only from `setLocale()` (#9).

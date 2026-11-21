@@ -2469,6 +2469,45 @@ describe('prepare invariants', () => {
     }
   })
 
+  test('under the app\'s contexts, prepare and layout read nothing from the page', async () => {
+    const { setMeasureContext } = await import('./layout.ts')
+    // A page whose every read is counted, and contexts that draw an emoji wider than its font size,
+    // which Pretext's own contexts would check against a span drawn in the page.
+    const reads: string[] = []
+    const page = new Proxy({}, { get: (_, key) => { reads.push(String(key)); return undefined } })
+    const wideEmoji = (): OffscreenCanvasRenderingContext2D => {
+      const context = new OffscreenCanvas(1, 1).getContext('2d')!
+      const measure = context.measureText.bind(context)
+      context.measureText = (text: string) => ({ width: measure(text).width + 4 * (text.match(/\p{Extended_Pictographic}/gu) ?? []).length }) as TextMetrics
+      return context
+    }
+    const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'document')
+    try {
+      Object.defineProperty(globalThis, 'document', { value: page, configurable: true })
+      setLocale(undefined)
+      setMeasureContext(wideEmoji)
+      const text = 'Wave \u{1F600} kana \u30AB\u30BF \u{1F44D}'
+      const emoji = measureWidth('\u{1F600}', FONT) + 4
+      expect(layout(prepare(text, FONT), 60, 20).lineCount).toBeGreaterThan(1)
+      const lines = layoutWithLines(prepareWithSegments(text, FONT, { whiteSpace: 'pre-wrap' }), 1000, 20).lines
+      // The emoji keep the contexts' width.
+      expect(lines[0]!.width).toBeCloseTo(measureWidth(text, FONT) + 2 * 4, 6)
+      const rich = prepareRichInline([{ text: 'Wave ', font: FONT }, { text: '\u{1F600}', font: FONT, extraWidth: 4 }, { text: ' kana', font: FONT }])
+      expect(measureRichInlineStats(rich, 1000).maxLineWidth).toBeCloseTo(measureWidth('Wave ', FONT) + emoji + 4 + measureWidth(' kana', FONT), 6)
+      walkRichInlineLineRanges(rich, 40, range => { materializeRichInlineLineRange(rich, range) })
+      expect(reads).toEqual([])
+      // Pretext's own contexts read the page's language, as a check that the page is in reach.
+      setMeasureContext()
+      prepare('Wave', FONT)
+      expect(reads.length).toBeGreaterThan(0)
+    } finally {
+      setMeasureContext()
+      if (descriptor === undefined) Reflect.deleteProperty(globalThis, 'document')
+      else Object.defineProperty(globalThis, 'document', descriptor)
+      setLocale(undefined)
+    }
+  })
+
   test('setEngine() gives the named engine\'s whole profile whatever the user agent, until it is called without one', async () => {
     const { setEngine } = await import('./layout.ts')
     const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'navigator')
