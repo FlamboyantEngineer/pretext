@@ -30,6 +30,7 @@ export type ParagraphSegmentData = {
     emptyObjectSpaces: number[] | null;
     emptyObjectReturns: Uint8Array | null;
     hangEnds: Uint8Array | null;
+    pieceStarts: Uint8Array | null;
 };
 type InternalLineVisitor = (width: number, startSegmentIndex: number, startGraphemeIndex: number, endSegmentIndex: number, endGraphemeIndex: number) => void;
 export declare function isDiscretionaryLineEnd(segmentFlags: Uint8Array, segmentCount: number, endSegmentIndex: number, endGraphemeIndex: number): boolean;

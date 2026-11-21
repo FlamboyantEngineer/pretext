@@ -1,7 +1,7 @@
 import { alignToSource, analyzeText, isCollapsibleSpaceCode, DROPPED, HARD_BREAK, KIND_BITS, OBJECT, PRESERVED_SPACE, RETURNABLE, SOFT_HYPHEN, SPACE, SPACED, TAB, TEXT, UNBROKEN, ZERO_WIDTH_BREAK, ZERO_WIDTH_GLUE, } from './analysis.js';
 import { buildLineTextFromRange, buildRangeText, getGraphemeEnds } from './line-text.js';
 import { getItemTabAdvance, normalizeMaxWidth, normalizePreparedLineStart, stepPreparedLineGeometryFromStart, walkPreparedLinesRaw, } from './line-break.js';
-import { getEngineProfile, getFitLimit, getFontMeasurement, getPreparationLanguage, getSpaceWidth, readLetterSpacing, zeros } from './measurement.js';
+import { getEngineProfile, getFitLimit, getFontMeasurement, getLayoutUnits, getPreparationLanguage, getSpaceWidth, readLetterSpacing, zeros } from './measurement.js';
 import { measureAnalysis, mixedDirectionRe } from './prepare.js';
 const PRESERVED_WHITE_SPACE = 1 << PRESERVED_SPACE | 1 << TAB;
 const RICH_INLINE_START_CURSOR = {
@@ -509,6 +509,23 @@ export function prepareRichInline(items, options) {
                 gapSegments[i] = 1;
         }
     }
+    // Where the engine rounds each text item's piece of a line up to its layout unit (EngineProfile,
+    // roundsItemPieces), a line that goes on past a text item rounds up there (ParagraphSegmentData,
+    // pieceStarts): at the first segment of each item after a text item. A box's width is the
+    // caller's, as given. Only the complex walker rounds.
+    let pieceStarts = null;
+    if (profile.fitsInLayoutUnits && profile.roundsItemPieces) {
+        for (let index = 1; index < items.length; index++) {
+            const firstSegment = itemSegments[index];
+            if (firstSegment === 0 || firstSegment >= segmentCount || firstSegment === itemSegments[index + 1])
+                continue;
+            if (items[segmentItems[firstSegment - 1]].text === undefined)
+                continue;
+            (pieceStarts ??= new Uint8Array(segmentCount))[firstSegment] = 1;
+        }
+        if (pieceStarts !== null)
+            simple = false;
+    }
     let segmentHyphenWidths = null;
     let segmentTabStopAdvances = null;
     let segmentMinimumTabAdvances = null;
@@ -528,7 +545,7 @@ export function prepareRichInline(items, options) {
         itemEndHalts,
         hyphenRooms: discretionaryHyphenContexts !== null && profile.unfitHyphenRetreat === 'reduced-width' ? getHyphenRooms(hyphenWidths, itemSegments, segmentItems) : null,
         insideExtras, fillExtras, openingEdges,
-        emptyObjectSpaces: null, emptyObjectReturns: null, hangEnds: null,
+        emptyObjectSpaces: null, emptyObjectReturns: null, hangEnds: null, pieceStarts,
     };
     // The properties measureAnalysis() gives a text's handle, in its order, then the paragraph's own.
     const data = {
@@ -898,8 +915,17 @@ function createLine(flow, width, startSegmentIndex, startGraphemeIndex, endSegme
     let fragment = null;
     let occupiedWidth = 0;
     let to = startSegmentIndex;
+    // Where the walker rounds the line's width up past a text item (ParagraphSegmentData,
+    // pieceStarts), the item's fragment takes the rounding, its gap keeps its own width.
+    const pieceStarts = items.pieceStarts;
+    const layoutUnits = pieceStarts === null ? 0 : getLayoutUnits();
     if (bare) {
         for (let i = startSegmentIndex; i <= lastSegmentIndex; i++) {
+            if (pieceStarts !== null && i > startSegmentIndex && pieceStarts[i] === 1) {
+                const rounding = Math.ceil(lineW * layoutUnits - 1e-6) / layoutUnits - lineW;
+                occupiedWidth += rounding;
+                lineW += rounding;
+            }
             if (i === to) {
                 if (fragment !== null)
                     fragment.occupiedWidth = occupiedWidth;
@@ -927,6 +953,11 @@ function createLine(flow, width, startSegmentIndex, startGraphemeIndex, endSegme
     }
     else {
         for (let i = startSegmentIndex; i <= lastSegmentIndex; i++) {
+            if (pieceStarts !== null && i > startSegmentIndex && pieceStarts[i] === 1) {
+                const rounding = Math.ceil(lineW * layoutUnits - 1e-6) / layoutUnits - lineW;
+                occupiedWidth += rounding;
+                lineW += rounding;
+            }
             if (i === to) {
                 if (fragment !== null)
                     fragment.occupiedWidth = occupiedWidth;

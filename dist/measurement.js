@@ -560,6 +560,10 @@ let layoutScale = 1;
 export function setLayoutScaleValue(scale) {
     layoutScale = scale;
 }
+// Blink's layout units per CSS pixel at the scale setLayoutScale() gave: 64 per device pixel.
+export function getLayoutUnits() {
+    return 64 * layoutScale;
+}
 // The most a line's content may measure on a line of maxWidth and still fit it.
 export function getFitLimit(maxWidth, profile) {
     if (!profile.fitsInLayoutUnits)
@@ -589,6 +593,7 @@ function buildEngineProfile() {
         graphemeTable: engine === 'webkit' ? 'apple/char' : engine === 'gecko' ? 'gecko/char' : 'chromium/char',
         lineFitEpsilon: engine === 'webkit' ? 1 / 64 : 0.005,
         fitsInLayoutUnits: engine === 'blink',
+        roundsItemPieces: engine === 'blink',
         cutWordFit: engine === 'blink' ? 'reshaped-lines' : 'segment-prefixes',
         prefixFitMinWidth: engine === 'webkit' ? 0 : 80,
         cutWordKeepsLigatures: engine === 'gecko',

@@ -432,12 +432,16 @@ accurateLineEnds) {
                         }
                         // The space takes its kerning with this word, and takes it along where it hangs: a
                         // line that breaks between the two is shaped again without it
-                        // (shaping_line_breaker.cc:307-324). Preserved spaces that start the text or follow
-                        // a forced break are a Blink item of their own (inline_items_builder.cc:988-1034),
-                        // which kerns with nothing. Its script run is read from this text, or for a space of
-                        // the item before, from the paragraph's text before the word.
+                        // (shaping_line_breaker.cc:307-324). Preserved spaces that start the paragraph or
+                        // follow a forced break are a Blink item of their own (inline_items_builder.cc:
+                        // 988-1034), which kerns with nothing; ones that start a rich item after other text
+                        // kern with its word as a space inside it does: in 12px Arial under pre-wrap, a span
+                        // ` Yours weather on` after `ab` keeps `on` on its line from 109.42px in Chrome 154, as
+                        // `ab Yours weather on` in one node does, 0.22px less than without the kerning of the
+                        // space with `Y`. Its script run is read from this text, or for a space of the item
+                        // before, from the paragraph's text before the word.
                         if (spaceBefore && kerning.before !== 0 &&
-                            !((flags[mi - 1] & KIND_BITS) === PRESERVED_SPACE && (mi === (spaceBeforeIsOwn ? from + 1 : 1) || (flags[mi - 2] & KIND_BITS) === HARD_BREAK)) &&
+                            !((flags[mi - 1] & KIND_BITS) === PRESERVED_SPACE && (mi === 1 || (flags[mi - 2] & KIND_BITS) === HARD_BREAK)) &&
                             (spaceBeforeIsOwn
                                 ? spaceSharesScriptRun(scriptRuns, own, starts[mi] - ownStart, starts[mi] - ownStart + text.length)
                                 : spaceSharesScriptRun({ read: starts[mi - 1], scripts: ANY_SCRIPT, openBrackets: [] }, normalized, starts[mi], starts[mi] + text.length))) {

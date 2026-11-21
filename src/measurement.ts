@@ -60,6 +60,14 @@ export type EngineProfile = {
   // .AddEpsilon()). A unit is 1/64 px divided by the layout scale (setLayoutScale), since Chrome lays
   // out in device pixels.
   fitsInLayoutUnits: boolean
+  // Blink rounds each text item's piece of a line, an element's text or a text node, up to a layout
+  // unit before the line adds it (SnappedWidth over LayoutUnit::FromFloatCeil), so a rich-inline
+  // line of several items is up to a unit an item wider than its Canvas widths add up to
+  // (ParagraphSegmentData's pieceStarts in src/line-break.ts). In 12px Arial, `Yours waffle few `,
+  // a bold `café`, ` few Wavy `, a bold `weather` and ` re-entry rainfall` are 301.0137px by Canvas
+  // and 301.0625px on Chrome 154's line, each item rounded up to 1/64px, so Chrome wraps
+  // `rainfall` in a 301px box, where their sum fits it.
+  roundsItemPieces: boolean
   // How a segment is fit where a line narrower than it cuts it between letters, from Canvas
   // questions about the word (getSegmentFit). WebKit measures the word's grapheme prefixes
   // (TextUtil::breakWord), and Gecko adds the advances of the word shaped whole
@@ -1010,6 +1018,11 @@ export function setLayoutScaleValue(scale: number): void {
   layoutScale = scale
 }
 
+// Blink's layout units per CSS pixel at the scale setLayoutScale() gave: 64 per device pixel.
+export function getLayoutUnits(): number {
+  return 64 * layoutScale
+}
+
 // The most a line's content may measure on a line of maxWidth and still fit it.
 export function getFitLimit(maxWidth: number, profile: EngineProfile): number {
   if (!profile.fitsInLayoutUnits) return maxWidth + profile.lineFitEpsilon
@@ -1042,6 +1055,7 @@ function buildEngineProfile(): EngineProfile {
     graphemeTable: engine === 'webkit' ? 'apple/char' : engine === 'gecko' ? 'gecko/char' : 'chromium/char',
     lineFitEpsilon: engine === 'webkit' ? 1 / 64 : 0.005,
     fitsInLayoutUnits: engine === 'blink',
+    roundsItemPieces: engine === 'blink',
     cutWordFit: engine === 'blink' ? 'reshaped-lines' : 'segment-prefixes',
     prefixFitMinWidth: engine === 'webkit' ? 0 : 80,
     cutWordKeepsLigatures: engine === 'gecko',

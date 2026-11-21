@@ -1,5 +1,5 @@
 import { CONTROL, DROPPED, HARD_BREAK, KIND_BITS, OBJECT, PRESERVED_SPACE, RETURNABLE, SOFT_HYPHEN, SPACE, SPACED, TAB, TEXT, UNBROKEN, ZERO_WIDTH_BREAK, ZERO_WIDTH_GLUE, } from './analysis.js';
-import { getEngineProfile, getFitLimit } from './measurement.js';
+import { getEngineProfile, getFitLimit, getLayoutUnits } from './measurement.js';
 const BREAK_AFTER_KINDS = 1 << SPACE | 1 << ZERO_WIDTH_BREAK | 1 << SOFT_HYPHEN | 1 << PRESERVED_SPACE | 1 << TAB;
 function breaksAfterKind(kind) {
     return (1 << kind & BREAK_AFTER_KINDS) !== 0;
@@ -329,7 +329,15 @@ function walkPreparedComplexLines(prepared, cursor, maxWidth, onLine, stats, sin
     const openingEdges = items === undefined ? null : items.openingEdges;
     const emptyObjectSpaces = items === undefined ? null : items.emptyObjectSpaces;
     const emptyObjectReturns = items === undefined ? null : items.emptyObjectReturns;
+    const pieceStarts = items === undefined ? null : items.pieceStarts;
     const engineProfile = getEngineProfile();
+    // Blink rounds each text item's piece of a line up to a layout unit (SnappedWidth,
+    // shape_result_view.h:124, over LayoutUnit::FromFloatCeil) before the line's position adds it
+    // (LineBreaker::HandleText, line_breaker.cc:1420, 1714), so a line of several items is wider than
+    // their Canvas widths add up to. The line's width rounds up where it goes on past an item; the
+    // piece the line ends in needs none, as the fit limit is a whole number of units, under which a
+    // width fits exactly where its rounding does (getFitLimit in src/measurement.ts).
+    const layoutUnits = pieceStarts === null ? 0 : getLayoutUnits();
     // Preserved spaces and tabs at the end of a line hang past it (CSS Text 3
     // §4.1.2), so they take no room when fitting and don't size the line (§8.2).
     // Gecko doesn't hang tabs.
@@ -434,6 +442,10 @@ function walkPreparedComplexLines(prepared, cursor, maxWidth, onLine, stats, sin
                     // the gap fillSpacing.
                     let fillStart;
                     let fillSpacing = 0;
+                    // The item before rounds its piece up (layoutUnits), on a line a hard break ends there too;
+                    // a width within a millionth of a unit above a whole one is that one, a sum's error.
+                    if (pieceStarts !== null && i > lineStartSegmentIndex && pieceStarts[i] === 1)
+                        lineW = Math.ceil(lineW * layoutUnits - 1e-6) / layoutUnits;
                     const flags = segmentFlags[i];
                     const kind = flags & KIND_BITS;
                     if (kind === HARD_BREAK) {
