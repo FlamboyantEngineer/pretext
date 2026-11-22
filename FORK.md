@@ -110,3 +110,10 @@ Release commit: `0ebb1bea26e3f24067ef1ccb6504233af7940716`.
 
 Under `setMeasureContext()`, prediction reads nothing from the page: no emoji calibration span is drawn and measured,
 and the language comes only from `setLocale()` (#9).
+
+### 1.0.0-fe.7
+
+Under `setMeasureContext()`, a text segment that starts with digits, punctuation or brackets in right-to-left text is
+measured in the script run of the letters around it, as Chrome shapes it: after (or, at the text's start, before) the
+nearest letter, less that letter's width. In a font without Hebrew positioning, Chrome draws the digits of `שלום 123`
+unkerned, 0.48 px wider than `123` alone at 16 px. Pretext's own contexts measure the segment alone, as before.

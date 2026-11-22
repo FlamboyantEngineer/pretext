@@ -2508,6 +2508,40 @@ describe('prepare invariants', () => {
     }
   })
 
+  test('under the app\'s contexts, digits and punctuation in right-to-left text are measured in the script run of the letters around them', async () => {
+    const { setMeasureContext } = await import('./layout.ts')
+    // Contexts that shape as Blink itemizes: a digit in the run of a Hebrew letter is 1px wider,
+    // as a font without Hebrew positioning loses its kerning there.
+    const hebrew = /[\u0590-\u05FF]/u
+    const itemizing = (): OffscreenCanvasRenderingContext2D => {
+      const context = new OffscreenCanvas(1, 1).getContext('2d')!
+      const measure = context.measureText.bind(context)
+      context.measureText = (text: string) => {
+        let extra = 0
+        if (hebrew.test(text)) extra = (text.match(/\d/gu) ?? []).length
+        return { width: measure(text).width + extra } as TextMetrics
+      }
+      return context
+    }
+    const width = (text: string) => layoutWithLines(prepareWithSegments(text, FONT, { whiteSpace: 'pre-wrap' }), 1000, 20).lines[0]!.width
+    try {
+      setMeasureContext(itemizing)
+      const alone = measureWidth('123', FONT)
+      const space = measureWidth(' ', FONT)
+      const word = measureWidth('\u05E9\u05DC\u05D5\u05DD', FONT)
+      // After the word, and before it at the start of the text.
+      expect(width('\u05E9\u05DC\u05D5\u05DD 123')).toBeCloseTo(word + space + alone + 3, 6)
+      expect(width('123 \u05E9\u05DC\u05D5\u05DD')).toBeCloseTo(word + space + alone + 3, 6)
+      // A Latin word between takes its own run back.
+      expect(width('\u05E9 a 123')).toBeCloseTo(measureWidth('\u05E9', FONT) + measureWidth('a', FONT) + 2 * space + alone, 6)
+      // Pretext's own contexts measure the segment alone, as Canvas itemizes it.
+      setMeasureContext()
+      expect(width('\u05E9\u05DC\u05D5\u05DD 123')).toBeCloseTo(measureWidth('\u05E9\u05DC\u05D5\u05DD 123', FONT), 6)
+    } finally {
+      setMeasureContext()
+    }
+  })
+
   test('setEngine() gives the named engine\'s whole profile whatever the user agent, until it is called without one', async () => {
     const { setEngine } = await import('./layout.ts')
     const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'navigator')
