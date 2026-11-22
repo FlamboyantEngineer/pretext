@@ -10,7 +10,11 @@ first and are offered upstream afterwards. Everything else in this repository is
 - `release`: one commit per release, holding only the packed package (`package.json`, `dist/`, `src/`, the readme,
   licence and changelog), built, with no lifecycle scripts and no development dependencies. Each release commit's parents
   are the previous release and the `main` commit it was built from, so that source stays reachable.
-- `v<version>`: an annotated tag on each release commit. Tags are never moved or deleted.
+- `release` is never force-pushed, rewritten or deleted: consumers pin its commits, and each one stays reachable because
+  every later release commit has it as a parent.
+- `v<version>`: an optional annotated tag on a release commit, for browsing only; nothing installs from a tag. The
+  release script tags locally; where tags can't be pushed, the commit pin and the Fork releases notes below are the
+  record. Tags are never moved or deleted.
 
 A version is upstream's last release plus `-fe.<n>`, counting the fork's releases on that upstream release: `1.0.0-fe.1`,
 `1.0.0-fe.2`, then `1.1.0-fe.1` once `main` holds upstream's 1.1.0.
@@ -41,8 +45,8 @@ From a clean checkout of `main` at the commit to release, with Bun and Node inst
 2. Run `scripts/fork-release.sh <version>`. It installs the locked tools, runs `bun test --parallel`, `bun run check`
    and `bun run package-smoke-test`, packs the package (`prepack` builds `dist/`), commits the packed files on `release`
    and tags the commit. It prints the release commit and the pin line.
-3. Look at the release commit (`git show --stat release`), then run `scripts/fork-release.sh` again with `--push`, or
-   push it yourself: `git push origin release v<version>`.
+3. Look at the release commit (`git show --stat release`), then push the branch as a fast-forward:
+   `git push origin release` (add `v<version>` where tags can be pushed). Never force it.
 4. Check the install in an empty folder: `npm install github:FlamboyantEngineer/pretext#<release commit>` must run no
    script and give `dist/layout.js` and `dist/rich-inline.js`.
 5. Bump the pins of the projects that use the fork.
@@ -55,10 +59,14 @@ offline invariants and comparison (`bun harness equal main --offline`) and measu
 
 ### 1.0.0-fe.1
 
+Release commit: `598bc1c977a62b823ce02530c0da9c2fba5d30da`.
+
 Upstream `main` at 6ed1edd (1.0.0 and its Unreleased changes), released as a built package so installing it runs no
 build.
 
 ### 1.0.0-fe.2
+
+Release commit: `d12a4bf4e6b0316202651df1368c351509881751`.
 
 Line breaking in Chromium matches Chrome more closely, and the engine inputs can be fixed by the app:
 
@@ -73,11 +81,15 @@ Line breaking in Chromium matches Chrome more closely, and the engine inputs can
 
 ### 1.0.0-fe.3
 
+Release commit: `31379f0a5c27184528b764c9445464c471ca17bb`.
+
 `setMeasureContext(create)` lets the app make the Canvas contexts Pretext measures through, for example under
 `textRendering = 'geometricPrecision'`, without which Chrome's Linux headless shell measures hinted whole-pixel widths
 (#6).
 
 ### 1.0.0-fe.4
+
+Release commit: `ae1e8392df00139a9c793202820d1430e7ffef88`.
 
 `extraWidthEnd`, a rich-inline item field, gives the end side of the item's `extraWidth`. Chrome fits a line that ends
 inside a padded `box-decoration-break: clone` span without the span's cloned end edge, so the Chromium profile now does
@@ -85,12 +97,16 @@ too; a line the span ends on still fits both edges (#7).
 
 ### 1.0.0-fe.5
 
+Release commit: `f20f63ec30d78e99f70036652e6bfb95bcebb79b`.
+
 - F3 ported: in Chromium, a rich line rounds each text item's piece up to the layout unit before the next item, as
   Chrome adds them (`roundsItemPieces`). Line and fragment widths are the rounded ones.
 - Under pre-wrap, a preserved space that starts a rich item after other text keeps its kerning with the word after it,
   as Chrome shapes it (#8).
 
 ### 1.0.0-fe.6
+
+Release commit: `0ebb1bea26e3f24067ef1ccb6504233af7940716`.
 
 Under `setMeasureContext()`, prediction reads nothing from the page: no emoji calibration span is drawn and measured,
 and the language comes only from `setLocale()` (#9).
