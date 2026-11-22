@@ -113,6 +113,8 @@ and the language comes only from `setLocale()` (#9).
 
 ### 1.0.0-fe.7
 
+Release commit: `8be6407a4f81c6e170530c00c9d7e8353d358a6a`.
+
 Under `setMeasureContext()`, a text segment that starts with digits, punctuation or brackets in right-to-left text is
 measured in the script run of the letters around it, as Chrome shapes it: after (or, at the text's start, before) the
 nearest letter, less that letter's width. In a font without Hebrew positioning, Chrome draws the digits of `שלום 123`
