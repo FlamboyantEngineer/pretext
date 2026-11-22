@@ -1012,6 +1012,10 @@ export function setContextFactory(factory) {
     contextFactory = factory;
     measureState = null;
 }
+// Whether preparation measures through the app's contexts (setMeasureContext).
+export function usesAppContexts() {
+    return contextFactory !== undefined;
+}
 function createContext(language) {
     // jsdom and happy-dom have a document whose canvas gives no 2D context: getContext() returns null there.
     let context = null;

@@ -120,6 +120,7 @@ export declare function getFontMeasurement(font: string, language: string | null
 export declare function getContext(measurement: FontMeasurement): CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
 export type MeasureContext = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
 export declare function setContextFactory(factory: (() => MeasureContext) | undefined): void;
+export declare function usesAppContexts(): boolean;
 export declare function clearMeasurementCaches(): void;
 export {};
 //# sourceMappingURL=measurement.d.ts.map

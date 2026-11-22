@@ -46,6 +46,7 @@ import {
   noExtraSpacings,
   noSpaceKerning,
   textMayContainEmoji,
+  usesAppContexts,
   type SegmentMetrics,
   zeros,
 } from './measurement.js'
@@ -339,6 +340,40 @@ function getJoinedNarrowing(analysis: TextAnalysis, analysisIndex: number, to: n
   return apart - together > lineFitEpsilon ? apart - together : 0
 }
 
+// A text segment that starts with characters of no script of their own (digits, punctuation,
+// brackets) is shaped in the script run of the letters around it (ScriptRunIterator: the run
+// before it, or for the text's first characters the run after them), and that script picks the
+// font's features: HarfBuzz positions nothing in a Hebrew run of a font without Hebrew
+// positioning, so in Chrome 153 the digits of `שלום 123` draw unkerned, 0.48 px wider than
+// `123` alone in Geist. Canvas measures a segment alone, and itemizes `123` as Common. The
+// app's contexts (setMeasureContext) can itemize as Blink does, so a segment is measured after
+// (or before) the character whose script the run takes, less that character's width, and the
+// difference from the segment alone is returned. Only a run of a right-to-left script is measured
+// so (mixedDirectionRe): HarfBuzz keeps the default script's features for the others, and CJK
+// punctuation has its own measuring (getHanKerningTrims). The character is looked for in the text's own run of the item: an item takes no script from the
+// item before it (ENGINE_FOLLOWUPS.md, Bidi levels, direction and script runs).
+function getScriptContextShift(own: string, at: number, text: string, alone: number, measurement: FontMeasurement, emojiCorrection: number): number {
+  if (!mixedDirectionRe.test(own)) return 0
+  if ((getScriptFactsAt(text, 0) & ANY_SCRIPT) !== ANY_SCRIPT) return 0
+  const strong = (i: number) => (getScriptFactsAt(own, i) & ANY_SCRIPT) !== ANY_SCRIPT
+  const characterAt = (i: number) => String.fromCodePoint(own.codePointAt(i)!)
+  for (let i = at - 1; i >= 0; i--) {
+    if ((own.charCodeAt(i) & 0xFC00) === 0xDC00 && i > 0) i--
+    if (!strong(i)) continue
+    const anchor = characterAt(i)
+    if (!mixedDirectionRe.test(anchor)) return 0
+    return getTextWidth(anchor + text, measurement, emojiCorrection) - getTextWidth(anchor, measurement, emojiCorrection) - alone
+  }
+  for (let i = at; i < own.length; i += own.codePointAt(i)! > 0xFFFF ? 2 : 1) {
+    if (!strong(i)) continue
+    // The segment's own letters give its run a script, which it is measured in alone.
+    const anchor = characterAt(i)
+    if (i < at + text.length || !mixedDirectionRe.test(anchor)) return 0
+    return getTextWidth(text + anchor, measurement, emojiCorrection) - getTextWidth(anchor, measurement, emojiCorrection) - alone
+  }
+  return 0
+}
+
 // A text segment's width as measured: alone, or together with the following space less
 // that space, plus the item's kerning with a space that follows zero-width breaks. Apart
 // from measureAnalysis()'s loop, whose code JavaScriptCore otherwise never optimizes fully
@@ -428,6 +463,7 @@ export function measureAnalysis(
   let fontSpaceKerning = engineProfile.kernsAcrossCanvasWords && (hasSpace || kernsBefore || kernsAfter) ? getFontSpaceKerning(fontMeasurement) : null
   if (fontSpaceKerning !== null && mixedDirectionRe.test(own)) fontSpaceKerning = null
   const scriptRuns: ScriptRuns = { read: 0, scripts: ANY_SCRIPT, openBrackets: [] }
+  const appContexts = usesAppContexts()
   // What the word before a space adds to that space, the next segment.
   let spaceShare = 0
 
@@ -523,6 +559,7 @@ export function measureAnalysis(
           }
         }
         width = getTextSegmentWidth(text, textMetrics, fontMeasurement, emojiCorrection, measuredWithSpace ? spaceWidth : 0, followingSpaceKerning)
+        if (appContexts) width += getScriptContextShift(own, starts[mi]! - ownStart, text, textMetrics.width, fontMeasurement, emojiCorrection)
         // The walkers put a gap after every grapheme of a spaced segment, so a grapheme
         // the engine gives none takes one back from its advance, here and in the advances
         // a break inside the segment falls by, and one whose glyphs WebKit gives more or
